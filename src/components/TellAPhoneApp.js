@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import io from 'socket.io-client';
 import { Mic, MicOff, Users, Radio, InfoIcon, Clock, Volume2, ThumbsUp, ThumbsDown, AlertTriangle } from 'lucide-react';
@@ -84,17 +83,10 @@ const TellAPhoneApp = () => {
 
   const socketRef = useRef(null);
   const mediaRecorderRef = useRef(null);
+  const audioRef = useRef(new Audio());
   const mediaSourceRef = useRef(null);
   const sourceBufferRef = useRef(null);
   const streamRef = useRef(null);
-
-  const audioRef = useRef(null);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      audioRef.current = new Audio();
-    }
-  }, []);
 
 
   const getSupportedMimeType = useCallback(() => {
@@ -108,15 +100,15 @@ const TellAPhoneApp = () => {
   }, []);
 
   const setupMediaSource = useCallback(() => {
-    if (!mediaSourceRef.current && audioRef.current) {
+    if (!mediaSourceRef.current) {
       mediaSourceRef.current = new MediaSource();
       audioRef.current.src = URL.createObjectURL(mediaSourceRef.current);
-  
+
       mediaSourceRef.current.addEventListener('sourceopen', () => {
         console.log('MediaSource opened');
         sourceBufferRef.current = null; // Reset sourceBuffer on new MediaSource
       });
-  
+
       audioRef.current.play().catch(e => console.error('Error playing audio:', e));
     }
   }, []);
@@ -227,7 +219,7 @@ const TellAPhoneApp = () => {
         }
       }
     };
-  },  [setupMediaSource, appendAudioChunk, isBroadcasting, startBroadcasting, stopBroadcasting]);
+  }, [setupMediaSource, appendAudioChunk]);
 
   const startBroadcasting = useCallback(() => {
     if (streamRef.current) {
@@ -579,7 +571,7 @@ const TellAPhoneApp = () => {
             ) : (
               <>
                 <MicOff className="mr-2" />
-                <span>You&apos;re Muted</span>
+                <span className="text-sm">You&apos;re Muted</span>
               </>
             )}
           </Button>
