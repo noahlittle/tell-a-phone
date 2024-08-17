@@ -83,10 +83,17 @@ const TellAPhoneApp = () => {
 
   const socketRef = useRef(null);
   const mediaRecorderRef = useRef(null);
-  const audioRef = useRef(new Audio());
   const mediaSourceRef = useRef(null);
   const sourceBufferRef = useRef(null);
   const streamRef = useRef(null);
+
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      audioRef.current = new Audio();
+    }
+  }, []);
 
 
   const getSupportedMimeType = useCallback(() => {
@@ -100,15 +107,15 @@ const TellAPhoneApp = () => {
   }, []);
 
   const setupMediaSource = useCallback(() => {
-    if (!mediaSourceRef.current) {
+    if (!mediaSourceRef.current && audioRef.current) {
       mediaSourceRef.current = new MediaSource();
       audioRef.current.src = URL.createObjectURL(mediaSourceRef.current);
-
+  
       mediaSourceRef.current.addEventListener('sourceopen', () => {
         console.log('MediaSource opened');
         sourceBufferRef.current = null; // Reset sourceBuffer on new MediaSource
       });
-
+  
       audioRef.current.play().catch(e => console.error('Error playing audio:', e));
     }
   }, []);
@@ -219,7 +226,7 @@ const TellAPhoneApp = () => {
         }
       }
     };
-  }, [setupMediaSource, appendAudioChunk]);
+  },  [setupMediaSource, appendAudioChunk, isBroadcasting, startBroadcasting, stopBroadcasting]);
 
   const startBroadcasting = useCallback(() => {
     if (streamRef.current) {
