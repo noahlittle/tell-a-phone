@@ -561,17 +561,17 @@ const TellAPhoneApp = () => {
             {isBroadcasting ? (
               <>
                 <Mic className="mr-2" />
-                You're Broadcasting!
+                <span>You&apos;re Broadcasting!</span>
               </>
             ) : isInQueue && queuePosition === 1 && currentBroadcaster ? (
               <>
                 <Clock className="mr-2" />
-                You're live in {Math.ceil(timeLeft / 1000)}s
+                <span>You&apos;re live in {Math.ceil(timeLeft / 1000)}s</span>
               </>
             ) : (
               <>
                 <MicOff className="mr-2" />
-                You're Muted
+                <span>You&apos;re Muted</span>
               </>
             )}
           </Button>
