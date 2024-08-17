@@ -1,4 +1,8 @@
-import TellAPhoneApp from '../components/TellAPhoneApp';
+import dynamic from 'next/dynamic';
+
+const TellAPhoneApp = dynamic(() => import('../components/TellAPhoneApp'), { 
+  ssr: false 
+});
 
 export default function Home() {
   return (
