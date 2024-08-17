@@ -140,7 +140,7 @@ const TellAPhoneApp = () => {
   }, []);
 
   useEffect(() => {
-    socketRef.current = io('http://localhost:3001');
+    socketRef.current = io('https://api.raydeeo.com');
 
     socketRef.current.on('connect', () => setIsConnected(true));
     socketRef.current.on('disconnect', () => setIsConnected(false));
