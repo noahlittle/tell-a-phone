@@ -93,7 +93,7 @@ const TellAPhoneApp = () => {
   const startBroadcasting = useCallback(async () => {
     try {
       console.log('Starting broadcast...');
-      if (!streamRef.current) {
+      if (!streamRef.current || !streamRef.current.active) {
         streamRef.current = await navigator.mediaDevices.getUserMedia({ 
           audio: { 
             echoCancellation: true,
@@ -105,6 +105,16 @@ const TellAPhoneApp = () => {
         });
       }
       console.log('Got user media stream:', streamRef.current);
+  
+      // Ensure the stream is active
+      if (!streamRef.current.active) {
+        console.log('Stream is not active, attempting to activate...');
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for 1 second
+        if (!streamRef.current.active) {
+          throw new Error('Failed to activate media stream');
+        }
+      }
+  
       const mimeType = 'audio/webm;codecs=opus';
       mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
         mimeType: mimeType
@@ -130,6 +140,14 @@ const TellAPhoneApp = () => {
       console.log('Broadcasting started with mime type:', mimeType);
     } catch (error) {
       console.error('Error starting broadcast:', error);
+      // Attempt to stop the stream and clean up
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      setIsBroadcasting(false);
+      // Notify the server that broadcasting failed
+      socketRef.current.emit('broadcastFailed');
     }
   }, []);
 
