@@ -101,22 +101,20 @@ const TellAPhoneApp = () => {
     return supportedType;
   }, []);
 
-  const setupMediaSource = useCallback(() => {
+  const mediaSourceOpenPromise = useRef(null);
+
+  const openMediaSource = useCallback(() => {
     if (!mediaSourceRef.current) {
       mediaSourceRef.current = new MediaSource();
       audioRef.current.src = URL.createObjectURL(mediaSourceRef.current);
 
-      mediaSourceRef.current.addEventListener('sourceopen', () => {
-        console.log('MediaSource opened');
-        const mimeType = getSupportedMimeType();
-        if (!sourceBufferRef.current && mimeType) {
-          try {
-            sourceBufferRef.current = mediaSourceRef.current.addSourceBuffer(mimeType);
-            console.log('SourceBuffer created for MIME type:', mimeType);
-          } catch (error) {
-            console.error('Error creating SourceBuffer:', error);
-          }
-        }
+      mediaSourceOpenPromise.current = new Promise((resolve) => {
+        const openHandler = () => {
+          console.log('MediaSource opened');
+          mediaSourceRef.current.removeEventListener('sourceopen', openHandler);
+          resolve();
+        };
+        mediaSourceRef.current.addEventListener('sourceopen', openHandler);
       });
 
       mediaSourceRef.current.addEventListener('sourceended', () => {
@@ -126,48 +124,56 @@ const TellAPhoneApp = () => {
       mediaSourceRef.current.addEventListener('sourceclose', () => {
         console.log('MediaSource closed');
       });
-
-      audioRef.current.play().catch(e => {
-        console.error('Error playing audio:', e);
-        console.log('Audio element readyState:', audioRef.current.readyState);
-        console.log('Audio element error:', audioRef.current.error);
-      });
     }
-  }, [getSupportedMimeType]);
 
-  const appendAudioChunk = useCallback((audioChunk, mimeType) => {
+    return mediaSourceOpenPromise.current;
+  }, []);
+
+  const setupMediaSource = useCallback(async () => {
+    try {
+      await openMediaSource();
+      const mimeType = getSupportedMimeType();
+      if (!sourceBufferRef.current && mimeType) {
+        try {
+          sourceBufferRef.current = mediaSourceRef.current.addSourceBuffer(mimeType);
+          console.log('SourceBuffer created for MIME type:', mimeType);
+        } catch (error) {
+          console.error('Error creating SourceBuffer:', error);
+        }
+      }
+      await audioRef.current.play();
+      setIsAudioPlaying(true);
+    } catch (e) {
+      console.error('Error setting up MediaSource:', e);
+    }
+  }, [getSupportedMimeType, openMediaSource]);
+
+  const appendAudioChunk = useCallback(async (audioChunk, mimeType) => {
     console.log('Received audio chunk, MIME type:', mimeType);
     if (!mediaSourceRef.current) {
       console.error('MediaSource not initialized');
       return;
     }
 
-    console.log('MediaSource readyState:', mediaSourceRef.current.readyState);
+    try {
+      await mediaSourceOpenPromise.current;
+      console.log('MediaSource readyState:', mediaSourceRef.current.readyState);
 
-    const appendChunk = () => {
-      if (mediaSourceRef.current.readyState === 'open') {
-        try {
-          if (!sourceBufferRef.current) {
-            sourceBufferRef.current = mediaSourceRef.current.addSourceBuffer(mimeType);
-            console.log('SourceBuffer created for MIME type:', mimeType);
-          }
-          if (sourceBufferRef.current && !sourceBufferRef.current.updating) {
-            const arrayBuffer = new Uint8Array(audioChunk).buffer;
-            sourceBufferRef.current.appendBuffer(arrayBuffer);
-            console.log('Audio chunk appended, size:', arrayBuffer.byteLength);
-          } else {
-            console.log('SourceBuffer not ready for appending');
-          }
-        } catch (error) {
-          console.error('Error appending audio chunk:', error);
-        }
-      } else {
-        console.log('MediaSource not open. Current state:', mediaSourceRef.current.readyState);
-        setTimeout(appendChunk, 100); // Retry after 100ms
+      if (!sourceBufferRef.current) {
+        sourceBufferRef.current = mediaSourceRef.current.addSourceBuffer(mimeType);
+        console.log('SourceBuffer created for MIME type:', mimeType);
       }
-    };
 
-    appendChunk();
+      if (sourceBufferRef.current && !sourceBufferRef.current.updating) {
+        const arrayBuffer = new Uint8Array(audioChunk).buffer;
+        sourceBufferRef.current.appendBuffer(arrayBuffer);
+        console.log('Audio chunk appended, size:', arrayBuffer.byteLength);
+      } else {
+        console.log('SourceBuffer not ready for appending');
+      }
+    } catch (error) {
+      console.error('Error appending audio chunk:', error);
+    }
   }, []);
 
   useEffect(() => {
@@ -357,14 +363,13 @@ const TellAPhoneApp = () => {
     }
   }, [username, usernameError]);
 
-  const startAudio = () => {
-    audioRef.current.play().catch(e => {
-      console.error('Error playing audio:', e);
-      console.log('Audio element readyState:', audioRef.current.readyState);
-      console.log('Audio element error:', audioRef.current.error);
-    });
-    setIsAudioPlaying(true);
-  };
+  const startAudio = useCallback(async () => {
+    try {
+      await setupMediaSource();
+    } catch (e) {
+      console.error('Error starting audio:', e);
+    }
+  }, [setupMediaSource]);
 
   const SoundWaveAnimation = () => (
     <div className="ml-2 flex space-x-1">
