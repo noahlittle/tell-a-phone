@@ -11,16 +11,23 @@ const WebRTCAudioStreamer = () => {
   const peerConnectionsRef = useRef({});
 
   useEffect(() => {
-    wsRef.current = new WebSocket('wss://api.raydeeo.com:3001');
+    wsRef.current = new WebSocket('wss://api.raydeeo.com');
 
     wsRef.current.onopen = () => {
       setIsConnected(true);
       setMessage('Connected to server');
+      console.log('WebSocket connected');
     };
 
     wsRef.current.onclose = () => {
       setIsConnected(false);
       setMessage('Disconnected from server');
+      console.log('WebSocket disconnected');
+    };
+
+    wsRef.current.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setMessage('Error connecting to server');
     };
 
     wsRef.current.onmessage = handleSignalingMessage;
@@ -34,6 +41,7 @@ const WebRTCAudioStreamer = () => {
 
   const handleSignalingMessage = async (event) => {
     const message = JSON.parse(event.data);
+    console.log('Received message:', message.type);
 
     switch (message.type) {
       case 'offer':
@@ -106,26 +114,35 @@ const WebRTCAudioStreamer = () => {
     try {
       localStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      for (const peerId in peerConnectionsRef.current) {
+      const peerIds = Object.keys(peerConnectionsRef.current);
+      if (peerIds.length === 0) {
+        // If no peers, just set up local stream
+        setIsBroadcasting(true);
+        setMessage('Broadcasting started (waiting for peers)');
+        return;
+      }
+
+      for (const peerId of peerIds) {
         const peerConnection = peerConnectionsRef.current[peerId];
         localStreamRef.current.getTracks().forEach(track => {
           peerConnection.addTrack(track, localStreamRef.current);
         });
+
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+
+        wsRef.current.send(JSON.stringify({
+          type: 'offer',
+          offer: offer,
+          recipientId: peerId
+        }));
       }
-
-      const offer = await peerConnectionsRef.current[Object.keys(peerConnectionsRef.current)[0]].createOffer();
-      await peerConnectionsRef.current[Object.keys(peerConnectionsRef.current)[0]].setLocalDescription(offer);
-
-      wsRef.current.send(JSON.stringify({
-        type: 'offer',
-        offer: offer
-      }));
 
       setIsBroadcasting(true);
       setMessage('Broadcasting started');
     } catch (error) {
       console.error('Error starting broadcast:', error);
-      setMessage('Error starting broadcast');
+      setMessage('Error starting broadcast: ' + error.message);
     }
   };
 
