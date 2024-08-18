@@ -11,7 +11,7 @@ const AudioBroadcaster = () => {
   const mediaStreamRef = useRef();
 
   useEffect(() => {
-    socketRef.current = io('https://api.raydeeo.com');
+    socketRef.current = io('http://api.raydeeo.com');
 
     socketRef.current.on('connect', () => {
       setIsConnected(true);
@@ -51,7 +51,7 @@ const AudioBroadcaster = () => {
   const startBroadcasting = async () => {
     try {
       mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioContextRef.current = new AudioContext();
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
       const source = audioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
       const processor = audioContextRef.current.createScriptProcessor(1024, 1, 1);
 
@@ -60,7 +60,7 @@ const AudioBroadcaster = () => {
 
       processor.onaudioprocess = (e) => {
         const audioData = e.inputBuffer.getChannelData(0);
-        socketRef.current.emit('audioChunk', audioData);
+        socketRef.current.emit('audioChunk', Array.from(audioData));
       };
     } catch (error) {
       console.error('Error accessing microphone:', error);
@@ -78,13 +78,23 @@ const AudioBroadcaster = () => {
   };
 
   const playAudio = (audioChunk) => {
-    const audioContext = new AudioContext();
-    const source = audioContext.createBufferSource();
-    const buffer = audioContext.createBuffer(1, audioChunk.length, audioContext.sampleRate);
-    buffer.getChannelData(0).set(audioChunk);
-    source.buffer = buffer;
-    source.connect(audioContext.destination);
-    source.start();
+    if (!audioChunk || audioChunk.length === 0) {
+      console.warn('Received empty audio chunk');
+      return;
+    }
+
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const buffer = audioContext.createBuffer(1, audioChunk.length, audioContext.sampleRate);
+      buffer.getChannelData(0).set(audioChunk);
+
+      const source = audioContext.createBufferSource();
+      source.buffer = buffer;
+      source.connect(audioContext.destination);
+      source.start();
+    } catch (error) {
+      console.error('Error playing audio:', error);
+    }
   };
 
   const handleBroadcastClick = () => {
