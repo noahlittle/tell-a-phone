@@ -40,6 +40,7 @@ const AudioBroadcaster = () => {
       setIsConnected(false);
       setIsBroadcasting(false);
       setQueuePosition(null);
+      setQueueLength(0);
     });
 
     socketRef.current.on('connect_error', (error) => {
@@ -172,6 +173,8 @@ const AudioBroadcaster = () => {
   const leaveQueue = () => {
     socketRef.current.emit('leaveQueue');
     stopBroadcasting();
+    setQueuePosition(null);
+    setQueueLength(prevLength => Math.max(0, prevLength - 1));
   };
 
   const handleButtonClick = () => {
