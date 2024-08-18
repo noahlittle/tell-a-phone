@@ -11,7 +11,7 @@ const AudioBroadcaster = () => {
   const mediaStreamRef = useRef();
 
   useEffect(() => {
-    socketRef.current = io('http://api.raydeeo.com');
+    socketRef.current = io('https://api.raydeeo.com');
 
     socketRef.current.on('connect', () => {
       setIsConnected(true);
