@@ -2,9 +2,15 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { MicIcon, MicOffIcon, UserIcon } from "lucide-react";
 
 const AudioBroadcaster = () => {
   const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState(0);
   const socketRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -13,8 +19,8 @@ const AudioBroadcaster = () => {
   const gainNodeRef = useRef(null);
   const compressorRef = useRef(null);
 
-  const BUFFER_SIZE = 4096; // Increased buffer size for better quality
-  const SAMPLE_RATE = 48000; // Higher sample rate for better quality
+  const BUFFER_SIZE = 4096;
+  const SAMPLE_RATE = 48000;
 
   useEffect(() => {
     socketRef.current = io('https://api.raydeeo.com:3001', {
@@ -24,14 +30,25 @@ const AudioBroadcaster = () => {
 
     socketRef.current.on('connect', () => {
       console.log('Connected to server');
+      setIsConnected(true);
+    });
+
+    socketRef.current.on('disconnect', () => {
+      console.log('Disconnected from server');
+      setIsConnected(false);
     });
 
     socketRef.current.on('connect_error', (error) => {
       console.error('Connection error:', error);
+      setIsConnected(false);
     });
 
     socketRef.current.on('audio', (audioData) => {
       playAudio(audioData);
+    });
+
+    socketRef.current.on('userCount', (count) => {
+      setOnlineUsers(count);
     });
 
     return () => {
@@ -144,12 +161,39 @@ const AudioBroadcaster = () => {
   };
 
   return (
-    <div>
-      <h1>High-Quality Audio Broadcaster</h1>
-      <button onClick={handleButtonClick}>
-        {isBroadcasting ? 'Stop Broadcasting' : 'Start Broadcasting'}
-      </button>
-    </div>
+    <Card className="w-[350px]">
+      <CardHeader>
+        <CardTitle className="flex justify-between items-center">
+          Audio Broadcaster
+          <Badge variant={isConnected ? "success" : "destructive"}>
+            {isConnected ? "Connected" : "Disconnected"}
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col items-center space-y-4">
+          <Button
+            onClick={handleButtonClick}
+            variant={isBroadcasting ? "destructive" : "default"}
+            className="w-full"
+          >
+            {isBroadcasting ? (
+              <>
+                <MicOffIcon className="mr-2 h-4 w-4" /> Stop Broadcasting
+              </>
+            ) : (
+              <>
+                <MicIcon className="mr-2 h-4 w-4" /> Start Broadcasting
+              </>
+            )}
+          </Button>
+          <div className="flex items-center space-x-2">
+            <UserIcon className="h-4 w-4" />
+            <span>{onlineUsers} online</span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 
