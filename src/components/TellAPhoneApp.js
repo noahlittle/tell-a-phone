@@ -160,22 +160,6 @@ const TellAPhoneApp = () => {
       setIsInQueue(false);
       setQueuePosition(0);
     });
-    socketRef.current.on('newBroadcaster', ({ id, username }) => {
-      setCurrentBroadcaster({ id, username });
-      setHasVoted(false);
-      audioRef.current.src = '';
-    });
-
-    socketRef.current.on('noBroadcaster', () => {
-      setCurrentBroadcaster(null);
-      audioRef.current.src = '';
-      setTimeLeft(10000);
-      setTotalTime(10000);
-      setUpvotes(0);
-      setDownvotes(0);
-      setTotalDuration(0);
-    });
-
     socketRef.current.on('startBroadcasting', () => {
       console.log('Received startBroadcasting event');
       setIsBroadcasting(true);
@@ -201,14 +185,26 @@ const TellAPhoneApp = () => {
 
     socketRef.current.on('timeUpdate', ({ timeLeft, totalTime }) => {
       console.log('Received timeUpdate:', { timeLeft, totalTime });
-      setTimeLeft(prevTime => {
-        console.log('Updating timeLeft:', prevTime, '->', timeLeft);
-        return timeLeft;
-      });
-      setTotalTime(prevTotal => {
-        console.log('Updating totalTime:', prevTotal, '->', totalTime);
-        return totalTime;
-      });
+      setTimeLeft(timeLeft);
+      setTotalTime(totalTime);
+    });
+  
+    socketRef.current.on('newBroadcaster', ({ id, username }) => {
+      console.log('New broadcaster:', username);
+      setCurrentBroadcaster({ id, username });
+      setHasVoted(false);
+      audioRef.current.src = '';
+    });
+  
+    socketRef.current.on('noBroadcaster', () => {
+      console.log('No broadcaster');
+      setCurrentBroadcaster(null);
+      audioRef.current.src = '';
+      setTimeLeft(10000);
+      setTotalTime(10000);
+      setUpvotes(0);
+      setDownvotes(0);
+      setTotalDuration(0);
     });
 
     socketRef.current.on('listenerCountUpdate', ({ count }) => {
