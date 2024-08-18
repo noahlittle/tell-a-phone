@@ -5,16 +5,14 @@ import io from 'socket.io-client';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MicIcon, MicOffIcon, UserIcon, ClockIcon } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
+import { MicIcon, MicOffIcon, UserIcon, ListOrderedIcon } from "lucide-react";
 
 const AudioBroadcaster = () => {
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState(0);
   const [queuePosition, setQueuePosition] = useState(null);
-  const [broadcastTimeLeft, setBroadcastTimeLeft] = useState(10);
-  const [currentBroadcaster, setCurrentBroadcaster] = useState(null);
+  const [queueLength, setQueueLength] = useState(0);
   const socketRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -22,11 +20,9 @@ const AudioBroadcaster = () => {
   const streamRef = useRef(null);
   const gainNodeRef = useRef(null);
   const compressorRef = useRef(null);
-  const broadcastTimerRef = useRef(null);
 
   const BUFFER_SIZE = 4096;
   const SAMPLE_RATE = 48000;
-  const BROADCAST_DURATION = 10; // 10 seconds
 
   useEffect(() => {
     socketRef.current = io('https://api.raydeeo.com:3001', {
@@ -42,9 +38,8 @@ const AudioBroadcaster = () => {
     socketRef.current.on('disconnect', () => {
       console.log('Disconnected from server');
       setIsConnected(false);
+      setIsBroadcasting(false);
       setQueuePosition(null);
-      setCurrentBroadcaster(null);
-      stopBroadcasting();
     });
 
     socketRef.current.on('connect_error', (error) => {
@@ -60,21 +55,14 @@ const AudioBroadcaster = () => {
       setOnlineUsers(count);
     });
 
-    socketRef.current.on('queuePosition', (position) => {
+    socketRef.current.on('queueUpdate', ({ position, length }) => {
       setQueuePosition(position);
-    });
-
-    socketRef.current.on('startBroadcasting', () => {
-      startBroadcasting();
-    });
-
-    socketRef.current.on('stopBroadcasting', () => {
-      stopBroadcasting();
-    });
-
-    socketRef.current.on('broadcastStatus', ({ broadcaster, timeLeft }) => {
-      setCurrentBroadcaster(broadcaster);
-      setBroadcastTimeLeft(timeLeft);
+      setQueueLength(length);
+      if (position === 0) {
+        startBroadcasting();
+      } else if (position === null) {
+        stopBroadcasting();
+      }
     });
 
     return () => {
@@ -87,15 +75,6 @@ const AudioBroadcaster = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (currentBroadcaster) {
-      const timer = setInterval(() => {
-        setBroadcastTimeLeft((prevTime) => Math.max(0, prevTime - 1));
-      }, 1000);
-
-      return () => clearInterval(timer);
-    }
-  }, [currentBroadcaster]);
 
   const initAudio = () => {
     if (!audioContextRef.current) {
@@ -186,12 +165,20 @@ const AudioBroadcaster = () => {
     source.connect(audioContextRef.current.destination);
     source.start();
   };
+  const joinQueue = () => {
+    socketRef.current.emit('joinQueue');
+  };
+
+  const leaveQueue = () => {
+    socketRef.current.emit('leaveQueue');
+    stopBroadcasting();
+  };
 
   const handleButtonClick = () => {
-    if (isBroadcasting) {
-      stopBroadcasting();
+    if (queuePosition !== null) {
+      leaveQueue();
     } else {
-      socketRef.current.emit('requestBroadcast');
+      joinQueue();
     }
   };
 
@@ -209,39 +196,32 @@ const AudioBroadcaster = () => {
         <div className="flex flex-col items-center space-y-4">
           <Button
             onClick={handleButtonClick}
-            variant={isBroadcasting ? "destructive" : "default"}
+            variant={queuePosition !== null ? "destructive" : "default"}
             className="w-full"
-            disabled={queuePosition !== null && queuePosition !== 0}
           >
-            {isBroadcasting ? (
+            {queuePosition !== null ? (
               <>
-                <MicOffIcon className="mr-2 h-4 w-4" /> Stop Broadcasting
+                <MicOffIcon className="mr-2 h-4 w-4" /> Leave Queue
               </>
             ) : (
               <>
-                <MicIcon className="mr-2 h-4 w-4" /> 
-                {queuePosition === null ? "Request to Broadcast" : 
-                 queuePosition === 0 ? "Start Broadcasting" : 
-                 `Queued (Position: ${queuePosition + 1})`}
+                <MicIcon className="mr-2 h-4 w-4" /> Join Queue
               </>
             )}
           </Button>
-          {currentBroadcaster && (
-            <div className="w-full space-y-2">
-              <div className="flex justify-between items-center">
-                <ClockIcon className="h-4 w-4" />
-                <span>{broadcastTimeLeft}s left</span>
-              </div>
-              <Progress value={(broadcastTimeLeft / BROADCAST_DURATION) * 100} />
-              <div className="text-center text-sm">
-                {currentBroadcaster === socketRef.current.id ? "You are broadcasting" : "Listening"}
-              </div>
-            </div>
-          )}
           <div className="flex items-center space-x-2">
             <UserIcon className="h-4 w-4" />
             <span>{onlineUsers} online</span>
           </div>
+          <div className="flex items-center space-x-2">
+            <ListOrderedIcon className="h-4 w-4" />
+            <span>{queueLength} in queue</span>
+          </div>
+          {queuePosition !== null && (
+            <Badge variant="secondary">
+              {queuePosition === 0 ? "Broadcasting" : `Queue Position: ${queuePosition + 1}`}
+            </Badge>
+          )}
         </div>
       </CardContent>
     </Card>
