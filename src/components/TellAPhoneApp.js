@@ -5,12 +5,15 @@ import io from 'socket.io-client';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MicIcon, MicOffIcon, UserIcon } from "lucide-react";
+import { MicIcon, MicOffIcon, UserIcon, ClockIcon } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 
 const AudioBroadcaster = () => {
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState(0);
+  const [queuePosition, setQueuePosition] = useState(null);
+  const [broadcastTimeLeft, setBroadcastTimeLeft] = useState(10);
   const socketRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -18,9 +21,11 @@ const AudioBroadcaster = () => {
   const streamRef = useRef(null);
   const gainNodeRef = useRef(null);
   const compressorRef = useRef(null);
+  const broadcastTimerRef = useRef(null);
 
   const BUFFER_SIZE = 4096;
   const SAMPLE_RATE = 48000;
+  const BROADCAST_DURATION = 10; // 10 seconds
 
   useEffect(() => {
     socketRef.current = io('https://api.raydeeo.com:3001', {
@@ -36,6 +41,8 @@ const AudioBroadcaster = () => {
     socketRef.current.on('disconnect', () => {
       console.log('Disconnected from server');
       setIsConnected(false);
+      setQueuePosition(null);
+      stopBroadcasting();
     });
 
     socketRef.current.on('connect_error', (error) => {
@@ -51,6 +58,18 @@ const AudioBroadcaster = () => {
       setOnlineUsers(count);
     });
 
+    socketRef.current.on('queuePosition', (position) => {
+      setQueuePosition(position);
+    });
+
+    socketRef.current.on('startBroadcasting', () => {
+      startBroadcasting();
+    });
+
+    socketRef.current.on('stopBroadcasting', () => {
+      stopBroadcasting();
+    });
+
     return () => {
       if (socketRef.current) {
         socketRef.current.disconnect();
@@ -60,6 +79,26 @@ const AudioBroadcaster = () => {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (isBroadcasting) {
+      setBroadcastTimeLeft(BROADCAST_DURATION);
+      broadcastTimerRef.current = setInterval(() => {
+        setBroadcastTimeLeft((prevTime) => {
+          if (prevTime <= 1) {
+            clearInterval(broadcastTimerRef.current);
+            stopBroadcasting();
+            return 0;
+          }
+          return prevTime - 1;
+        });
+      }, 1000);
+    } else {
+      clearInterval(broadcastTimerRef.current);
+    }
+
+    return () => clearInterval(broadcastTimerRef.current);
+  }, [isBroadcasting]);
 
   const initAudio = () => {
     if (!audioContextRef.current) {
@@ -81,7 +120,7 @@ const AudioBroadcaster = () => {
     }
   };
 
-  const startBroadcasting = async () => {
+   const startBroadcasting = async () => {
     try {
       initAudio();
       streamRef.current = await navigator.mediaDevices.getUserMedia({ 
@@ -95,7 +134,6 @@ const AudioBroadcaster = () => {
       });
       const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
       
-      // Connect nodes: source -> gain -> compressor -> analyser -> scriptProcessor
       source.connect(gainNodeRef.current);
       gainNodeRef.current.connect(compressorRef.current);
       compressorRef.current.connect(analyserRef.current);
@@ -104,7 +142,6 @@ const AudioBroadcaster = () => {
 
       scriptProcessorRef.current.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
-        // Convert to 16-bit PCM
         const pcmData = new Int16Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
           pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
@@ -116,6 +153,7 @@ const AudioBroadcaster = () => {
       console.error('Error starting broadcast:', error);
     }
   };
+
 
   const stopBroadcasting = () => {
     if (streamRef.current) {
@@ -134,7 +172,9 @@ const AudioBroadcaster = () => {
       compressorRef.current.disconnect();
     }
     setIsBroadcasting(false);
+    socketRef.current.emit('stopBroadcasting');
   };
+
 
   const playAudio = (audioData) => {
     if (!audioContextRef.current) {
@@ -156,10 +196,9 @@ const AudioBroadcaster = () => {
     if (isBroadcasting) {
       stopBroadcasting();
     } else {
-      startBroadcasting();
+      socketRef.current.emit('requestBroadcast');
     }
   };
-
   return (
     <Card className="w-[350px]">
       <CardHeader>
@@ -176,6 +215,7 @@ const AudioBroadcaster = () => {
             onClick={handleButtonClick}
             variant={isBroadcasting ? "destructive" : "default"}
             className="w-full"
+            disabled={queuePosition !== null && queuePosition !== 0}
           >
             {isBroadcasting ? (
               <>
@@ -183,10 +223,22 @@ const AudioBroadcaster = () => {
               </>
             ) : (
               <>
-                <MicIcon className="mr-2 h-4 w-4" /> Start Broadcasting
+                <MicIcon className="mr-2 h-4 w-4" /> 
+                {queuePosition === null ? "Request to Broadcast" : 
+                 queuePosition === 0 ? "Start Broadcasting" : 
+                 `Queued (${queuePosition})`}
               </>
             )}
           </Button>
+          {isBroadcasting && (
+            <div className="w-full space-y-2">
+              <div className="flex justify-between items-center">
+                <ClockIcon className="h-4 w-4" />
+                <span>{broadcastTimeLeft}s left</span>
+              </div>
+              <Progress value={(broadcastTimeLeft / BROADCAST_DURATION) * 100} />
+            </div>
+          )}
           <div className="flex items-center space-x-2">
             <UserIcon className="h-4 w-4" />
             <span>{onlineUsers} online</span>
