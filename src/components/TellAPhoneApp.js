@@ -8,9 +8,10 @@ const AudioStreamer = () => {
   const [message, setMessage] = useState('');
   const socketRef = useRef();
   const audioContextRef = useRef();
+  const streamSourceRef = useRef();
   const mediaStreamRef = useRef();
-  const audioBufferSourceRef = useRef();
-  const audioWorkletNodeRef = useRef();
+  const audioBufferRef = useRef(new Float32Array(4096));
+  const audioBufferIndexRef = useRef(0);
 
   useEffect(() => {
     socketRef.current = io('https://api.raydeeo.com');
@@ -26,12 +27,8 @@ const AudioStreamer = () => {
       setMessage('Disconnected from server');
     });
 
-    socketRef.current.on('currentStream', (stream) => {
-      playAudioStream(stream);
-    });
-
     socketRef.current.on('newAudioChunk', (chunk) => {
-      addAudioChunk(chunk);
+      addAudioChunk(new Float32Array(chunk));
     });
 
     return () => {
@@ -42,36 +39,40 @@ const AudioStreamer = () => {
     };
   }, []);
 
-  const initializeAudioContext = async () => {
+  const initializeAudioContext = () => {
     audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    await audioContextRef.current.audioWorklet.addModule('/audio-worklet.js');
-    audioWorkletNodeRef.current = new AudioWorkletNode(audioContextRef.current, 'audio-processor');
-    audioWorkletNodeRef.current.connect(audioContextRef.current.destination);
+    streamSourceRef.current = audioContextRef.current.createBufferSource();
+    streamSourceRef.current.connect(audioContextRef.current.destination);
+    streamSourceRef.current.start();
+
+    const scriptNode = audioContextRef.current.createScriptProcessor(1024, 1, 1);
+    scriptNode.onaudioprocess = processAudio;
+    scriptNode.connect(audioContextRef.current.destination);
   };
 
-  const playAudioStream = (stream) => {
-    const arrayBuffer = new ArrayBuffer(stream.length);
-    const view = new Uint8Array(arrayBuffer);
-    for (let i = 0; i < stream.length; i++) {
-      view[i] = stream[i];
-    }
-    audioContextRef.current.decodeAudioData(arrayBuffer, (buffer) => {
-      if (audioBufferSourceRef.current) {
-        audioBufferSourceRef.current.stop();
+  const processAudio = (audioProcessingEvent) => {
+    const outputBuffer = audioProcessingEvent.outputBuffer;
+    const channelData = outputBuffer.getChannelData(0);
+
+    for (let i = 0; i < channelData.length; i++) {
+      if (audioBufferIndexRef.current < audioBufferRef.current.length) {
+        channelData[i] = audioBufferRef.current[audioBufferIndexRef.current];
+        audioBufferIndexRef.current++;
+      } else {
+        channelData[i] = 0;
       }
-      audioBufferSourceRef.current = audioContextRef.current.createBufferSource();
-      audioBufferSourceRef.current.buffer = buffer;
-      audioBufferSourceRef.current.connect(audioWorkletNodeRef.current);
-      audioBufferSourceRef.current.start();
-    });
+    }
+
+    if (audioBufferIndexRef.current >= audioBufferRef.current.length) {
+      audioBufferIndexRef.current = 0;
+    }
   };
 
   const addAudioChunk = (chunk) => {
-    const floatArray = new Float32Array(chunk.length / 4);
-    for (let i = 0; i < floatArray.length; i++) {
-      floatArray[i] = chunk.readFloatLE(i * 4);
+    for (let i = 0; i < chunk.length; i++) {
+      audioBufferRef.current[audioBufferIndexRef.current] = chunk[i];
+      audioBufferIndexRef.current = (audioBufferIndexRef.current + 1) % audioBufferRef.current.length;
     }
-    audioWorkletNodeRef.current.port.postMessage(floatArray);
   };
 
   const startBroadcasting = async () => {
@@ -85,7 +86,7 @@ const AudioStreamer = () => {
 
       processor.onaudioprocess = (e) => {
         const audioData = e.inputBuffer.getChannelData(0);
-        socketRef.current.emit('audioChunk', new Float32Array(audioData));
+        socketRef.current.emit('audioChunk', Array.from(audioData));
       };
 
       setIsBroadcasting(true);
