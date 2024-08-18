@@ -84,6 +84,8 @@ const TellAPhoneApp = () => {
   const socketRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioRef = useRef(new Audio());
+  const audioContextRef = useRef(null);
+  const sourceNodeRef = useRef(null);
   const mediaSourceRef = useRef(null);
   const sourceBufferRef = useRef(null);
   const streamRef = useRef(null);
@@ -104,61 +106,60 @@ const TellAPhoneApp = () => {
   const audioChunksRef = useRef([]);
 
   const setupAudio = useCallback(() => {
-    if (typeof MediaSource !== 'undefined') {
-      setIsMediaSourceSupported(true);
-      if (mediaSourceRef.current) {
-        URL.revokeObjectURL(audioRef.current.src);
-        if (mediaSourceRef.current.readyState === 'open') {
-          mediaSourceRef.current.endOfStream();
-        }
-      }
-      
-      mediaSourceRef.current = new MediaSource();
-      audioRef.current.src = URL.createObjectURL(mediaSourceRef.current);
-
-      return new Promise((resolve) => {
-        mediaSourceRef.current.addEventListener('sourceopen', () => {
-          console.log('MediaSource opened');
-          sourceBufferRef.current = null;
-          resolve();
-        });
-      });
-    } else {
-      setIsMediaSourceSupported(false);
-      audioRef.current.src = '';
-      audioChunksRef.current = [];
+    if (typeof AudioContext !== 'undefined') {
+      audioContextRef.current = new AudioContext();
+      sourceNodeRef.current = audioContextRef.current.createBufferSource();
+      sourceNodeRef.current.connect(audioContextRef.current.destination);
+      sourceNodeRef.current.start();
       return Promise.resolve();
+    } else {
+      console.error('AudioContext is not supported in this browser');
+      return Promise.reject('AudioContext not supported');
     }
   }, []);
 
-  const appendAudioChunk = useCallback(async (audioChunk, mimeType) => {
-    console.log('Received audio chunk, MIME type:', mimeType);
-    if (isMediaSourceSupported) {
-      if (!mediaSourceRef.current || mediaSourceRef.current.readyState !== 'open') {
-        await setupAudio();
-      }
+  const appendAudioChunk = useCallback(async (audioChunk) => {
+    if (!audioContextRef.current) {
+      await setupAudio();
+    }
 
-      try {
-        if (!sourceBufferRef.current) {
-          sourceBufferRef.current = mediaSourceRef.current.addSourceBuffer(mimeType);
-          console.log('SourceBuffer created for MIME type:', mimeType);
+    const arrayBuffer = await audioChunk.arrayBuffer();
+    audioContextRef.current.decodeAudioData(arrayBuffer, (buffer) => {
+      const source = audioContextRef.current.createBufferSource();
+      source.buffer = buffer;
+      source.connect(audioContextRef.current.destination);
+      source.start();
+    }, (err) => console.error('Error decoding audio data', err));
+  }, [setupAudio]);
+
+  const stopBroadcasting = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    console.log('Broadcasting stopped');
+  }, []);
+
+  const toggleQueue = useCallback(async () => {
+    if (socketRef.current) {
+      if (isInQueue) {
+        socketRef.current.emit('leaveQueue');
+        stopBroadcasting();
+      } else {
+        try {
+          streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+          socketRef.current.emit('joinQueue');
+          setIsInQueue(true);
+        } catch (error) {
+          console.error('Error accessing microphone:', error);
+          alert('Unable to access microphone. Please ensure you have granted the necessary permissions.');
         }
-        if (sourceBufferRef.current && !sourceBufferRef.current.updating) {
-          const arrayBuffer = new Uint8Array(audioChunk).buffer;
-          sourceBufferRef.current.appendBuffer(arrayBuffer);
-          console.log('Audio chunk appended, size:', arrayBuffer.byteLength);
-        }
-      } catch (error) {
-        console.error('Error appending audio chunk:', error);
-      }
-    } else {
-      // Fallback for browsers without MediaSource support
-      audioChunksRef.current.push(audioChunk);
-      if (audioChunksRef.current.length === 1) {
-        playAudioFallback();
       }
     }
-  }, [isMediaSourceSupported, setupAudio]);
+  }, [isInQueue, stopBroadcasting]);
 
   const playAudioFallback = useCallback(() => {
     if (audioChunksRef.current.length > 0) {
@@ -273,33 +274,6 @@ const TellAPhoneApp = () => {
     }
   }, [getSupportedMimeType]);
 
-  const stopBroadcasting = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    console.log('Broadcasting stopped');
-  }, []);
-
-  const toggleQueue = useCallback(async () => {
-    if (socketRef.current) {
-      if (isInQueue) {
-        socketRef.current.emit('leaveQueue');
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
-          streamRef.current = null;
-        }
-      } else {
-        try {
-          streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-          socketRef.current.emit('joinQueue');
-          setIsInQueue(true);
-        } catch (error) {
-          console.error('Error accessing microphone:', error);
-          alert('Unable to access microphone. Please ensure you have granted the necessary permissions.');
-        }
-      }
-    }
-  }, [isInQueue]);
 
   const handleVote = useCallback((voteType) => {
     if (!hasVoted && currentBroadcaster && currentBroadcaster.id !== socketRef.current.id) {
