@@ -14,6 +14,7 @@ const AudioBroadcaster = () => {
   const [onlineUsers, setOnlineUsers] = useState(0);
   const [queuePosition, setQueuePosition] = useState(null);
   const [broadcastTimeLeft, setBroadcastTimeLeft] = useState(10);
+  const [currentBroadcaster, setCurrentBroadcaster] = useState(null);
   const socketRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -42,6 +43,7 @@ const AudioBroadcaster = () => {
       console.log('Disconnected from server');
       setIsConnected(false);
       setQueuePosition(null);
+      setCurrentBroadcaster(null);
       stopBroadcasting();
     });
 
@@ -70,6 +72,11 @@ const AudioBroadcaster = () => {
       stopBroadcasting();
     });
 
+    socketRef.current.on('broadcastStatus', ({ broadcaster, timeLeft }) => {
+      setCurrentBroadcaster(broadcaster);
+      setBroadcastTimeLeft(timeLeft);
+    });
+
     return () => {
       if (socketRef.current) {
         socketRef.current.disconnect();
@@ -81,24 +88,14 @@ const AudioBroadcaster = () => {
   }, []);
 
   useEffect(() => {
-    if (isBroadcasting) {
-      setBroadcastTimeLeft(BROADCAST_DURATION);
-      broadcastTimerRef.current = setInterval(() => {
-        setBroadcastTimeLeft((prevTime) => {
-          if (prevTime <= 1) {
-            clearInterval(broadcastTimerRef.current);
-            stopBroadcasting();
-            return 0;
-          }
-          return prevTime - 1;
-        });
+    if (currentBroadcaster) {
+      const timer = setInterval(() => {
+        setBroadcastTimeLeft((prevTime) => Math.max(0, prevTime - 1));
       }, 1000);
-    } else {
-      clearInterval(broadcastTimerRef.current);
-    }
 
-    return () => clearInterval(broadcastTimerRef.current);
-  }, [isBroadcasting]);
+      return () => clearInterval(timer);
+    }
+  }, [currentBroadcaster]);
 
   const initAudio = () => {
     if (!audioContextRef.current) {
@@ -120,7 +117,7 @@ const AudioBroadcaster = () => {
     }
   };
 
-   const startBroadcasting = async () => {
+  const startBroadcasting = async () => {
     try {
       initAudio();
       streamRef.current = await navigator.mediaDevices.getUserMedia({ 
@@ -154,7 +151,6 @@ const AudioBroadcaster = () => {
     }
   };
 
-
   const stopBroadcasting = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
@@ -175,23 +171,6 @@ const AudioBroadcaster = () => {
     socketRef.current.emit('stopBroadcasting');
   };
 
-
-  const playAudio = (audioData) => {
-    if (!audioContextRef.current) {
-      initAudio();
-    }
-    const buffer = audioContextRef.current.createBuffer(1, audioData.length, SAMPLE_RATE);
-    const channelData = buffer.getChannelData(0);
-    for (let i = 0; i < audioData.length; i++) {
-      // Convert back from 16-bit PCM to float
-      channelData[i] = audioData[i] / 0x7FFF;
-    }
-    const source = audioContextRef.current.createBufferSource();
-    source.buffer = buffer;
-    source.connect(audioContextRef.current.destination);
-    source.start();
-  };
-
   const handleButtonClick = () => {
     if (isBroadcasting) {
       stopBroadcasting();
@@ -199,6 +178,7 @@ const AudioBroadcaster = () => {
       socketRef.current.emit('requestBroadcast');
     }
   };
+
   return (
     <Card className="w-[350px]">
       <CardHeader>
@@ -226,17 +206,20 @@ const AudioBroadcaster = () => {
                 <MicIcon className="mr-2 h-4 w-4" /> 
                 {queuePosition === null ? "Request to Broadcast" : 
                  queuePosition === 0 ? "Start Broadcasting" : 
-                 `Queued (${queuePosition})`}
+                 `Queued (Position: ${queuePosition + 1})`}
               </>
             )}
           </Button>
-          {isBroadcasting && (
+          {currentBroadcaster && (
             <div className="w-full space-y-2">
               <div className="flex justify-between items-center">
                 <ClockIcon className="h-4 w-4" />
                 <span>{broadcastTimeLeft}s left</span>
               </div>
               <Progress value={(broadcastTimeLeft / BROADCAST_DURATION) * 100} />
+              <div className="text-center text-sm">
+                {currentBroadcaster === socketRef.current.id ? "You are broadcasting" : "Listening"}
+              </div>
             </div>
           )}
           <div className="flex items-center space-x-2">
