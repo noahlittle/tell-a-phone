@@ -83,47 +83,15 @@ const TellAPhoneApp = () => {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
 
   const socketRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const scriptProcessorRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioRef = useRef(new Audio());
   const streamRef = useRef(null);
-  const gainNodeRef = useRef(null);
-  const compressorRef = useRef(null);
 
   const BUFFER_SIZE = 4096;
   const SAMPLE_RATE = 48000;
 
-  const getSupportedMimeType = useCallback(() => {
-    const possibleTypes = [
-      'audio/webm;codecs=opus',
-      'audio/webm',
-      'audio/ogg;codecs=opus',
-      'audio/mp4;codecs=opus'
-    ];
-    return possibleTypes.find(mimeType => MediaRecorder.isTypeSupported(mimeType)) || '';
-  }, []);
-
-  const initAudio = useCallback(() => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
-      analyserRef.current = audioContextRef.current.createAnalyser();
-      scriptProcessorRef.current = audioContextRef.current.createScriptProcessor(BUFFER_SIZE, 1, 1);
-      gainNodeRef.current = audioContextRef.current.createGain();
-      compressorRef.current = audioContextRef.current.createDynamicsCompressor();
-
-      compressorRef.current.threshold.setValueAtTime(-24, audioContextRef.current.currentTime);
-      compressorRef.current.knee.setValueAtTime(40, audioContextRef.current.currentTime);
-      compressorRef.current.ratio.setValueAtTime(12, audioContextRef.current.currentTime);
-      compressorRef.current.attack.setValueAtTime(0, audioContextRef.current.currentTime);
-      compressorRef.current.release.setValueAtTime(0.25, audioContextRef.current.currentTime);
-
-      gainNodeRef.current.gain.setValueAtTime(1.2, audioContextRef.current.currentTime);
-    }
-  }, []);
-
   const startBroadcasting = useCallback(async () => {
     try {
-      initAudio();
       streamRef.current = await navigator.mediaDevices.getUserMedia({ 
         audio: { 
           echoCancellation: true,
@@ -133,45 +101,34 @@ const TellAPhoneApp = () => {
           channelCount: 1
         } 
       });
-      const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
-      
-      source.connect(gainNodeRef.current);
-      gainNodeRef.current.connect(compressorRef.current);
-      compressorRef.current.connect(analyserRef.current);
-      analyserRef.current.connect(scriptProcessorRef.current);
-      scriptProcessorRef.current.connect(audioContextRef.current.destination);
+      const mimeType = 'audio/webm;codecs=opus';
+      mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
+        mimeType: mimeType
+      });
 
-      scriptProcessorRef.current.onaudioprocess = (e) => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        const pcmData = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0 && socketRef.current) {
+          socketRef.current.emit('audioStream', event.data, mimeType);
         }
-        socketRef.current.emit('audioStream', Array.from(pcmData));
       };
+
+      mediaRecorderRef.current.start(100);
       setIsBroadcasting(true);
+      console.log('Broadcasting started with mime type:', mimeType);
     } catch (error) {
       console.error('Error starting broadcast:', error);
     }
-  }, [initAudio]);
+  }, []);
 
   const stopBroadcasting = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
-    if (scriptProcessorRef.current) {
-      scriptProcessorRef.current.disconnect();
-    }
-    if (analyserRef.current) {
-      analyserRef.current.disconnect();
-    }
-    if (gainNodeRef.current) {
-      gainNodeRef.current.disconnect();
-    }
-    if (compressorRef.current) {
-      compressorRef.current.disconnect();
-    }
     setIsBroadcasting(false);
+    console.log('Broadcasting stopped');
   }, []);
 
   useEffect(() => {
@@ -190,9 +147,7 @@ const TellAPhoneApp = () => {
       setIsConnected(false);
     });
 
-    socketRef.current.on('disconnect', () => {
-      setIsConnected(false);
-    });
+    socketRef.current.on('disconnect', () => setIsConnected(false));
 
     socketRef.current.on('queueUpdate', ({ queue }) => setQueueLength(queue));
     socketRef.current.on('queuePositionUpdate', ({ position }) => setQueuePosition(position));
@@ -203,10 +158,12 @@ const TellAPhoneApp = () => {
     socketRef.current.on('newBroadcaster', ({ id, username }) => {
       setCurrentBroadcaster({ id, username });
       setHasVoted(false);
+      audioRef.current.src = '';
     });
 
     socketRef.current.on('noBroadcaster', () => {
       setCurrentBroadcaster(null);
+      audioRef.current.src = '';
       setTimeLeft(10000);
       setTotalTime(10000);
       setUpvotes(0);
@@ -226,9 +183,12 @@ const TellAPhoneApp = () => {
       stopBroadcasting();
     });
 
-    socketRef.current.on('audio', (audioData) => {
+    socketRef.current.on('broadcastAudio', (audioChunk, mimeType) => {
       if (!isBroadcasting && isAudioEnabled) {
-        playAudio(audioData);
+        const blob = new Blob([audioChunk], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        audioRef.current.src = url;
+        audioRef.current.play().catch(e => console.error('Error playing audio:', e));
       }
     });
 
@@ -262,26 +222,8 @@ const TellAPhoneApp = () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
     };
   }, [startBroadcasting, stopBroadcasting, isBroadcasting, isAudioEnabled]);
-
-  const playAudio = useCallback((audioData) => {
-    if (!audioContextRef.current) {
-      initAudio();
-    }
-    const buffer = audioContextRef.current.createBuffer(1, audioData.length, SAMPLE_RATE);
-    const channelData = buffer.getChannelData(0);
-    for (let i = 0; i < audioData.length; i++) {
-      channelData[i] = audioData[i] / 0x7FFF;
-    }
-    const source = audioContextRef.current.createBufferSource();
-    source.buffer = buffer;
-    source.connect(audioContextRef.current.destination);
-    source.start();
-  }, [initAudio]);
 
   const toggleQueue = useCallback(async () => {
     if (socketRef.current) {
@@ -413,8 +355,7 @@ const TellAPhoneApp = () => {
               {usernameError && <p className="text-red-500 text-xs">{usernameError}</p>}
             </div>
             <Button 
-              onClick={handleUsernameSubmit} 
-              disabled={username.length !== 6 || !!usernameError || isCheckingUsername}
+              onClick={handleUsernameSubmit} disabled={username.length !== 6 || !!usernameError || isCheckingUsername}
               className="w-full bg-blue-500 hover:bg-blue-600"
             >
               Start Listening!
