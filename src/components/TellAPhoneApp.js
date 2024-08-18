@@ -113,29 +113,44 @@ const TellAPhoneApp = () => {
     }
   }, []);
 
-  const appendAudioChunk = useCallback((audioChunk, mimeType) => {
+  const waitForSourceOpen = () => {
+    return new Promise((resolve) => {
+      if (mediaSourceRef.current.readyState === 'open') {
+        resolve();
+      } else {
+        mediaSourceRef.current.addEventListener('sourceopen', resolve, { once: true });
+      }
+    });
+  };
+
+  const resetMediaSource = useCallback(() => {
+    if (mediaSourceRef.current && mediaSourceRef.current.readyState === 'open') {
+      mediaSourceRef.current.endOfStream();
+    }
+    setupMediaSource();
+  }, [setupMediaSource]);
+  
+  const appendAudioChunk = useCallback(async (audioChunk, mimeType) => {
     console.log('Received audio chunk, MIME type:', mimeType);
     if (!mediaSourceRef.current) {
       console.error('MediaSource not initialized');
       return;
     }
-
-    if (mediaSourceRef.current.readyState === 'open') {
-      try {
-        if (!sourceBufferRef.current) {
-          sourceBufferRef.current = mediaSourceRef.current.addSourceBuffer(mimeType);
-          console.log('SourceBuffer created for MIME type:', mimeType);
-        }
-        if (sourceBufferRef.current && !sourceBufferRef.current.updating) {
-          const arrayBuffer = new Uint8Array(audioChunk).buffer;
-          sourceBufferRef.current.appendBuffer(arrayBuffer);
-          console.log('Audio chunk appended, size:', arrayBuffer.byteLength);
-        }
-      } catch (error) {
-        console.error('Error appending audio chunk:', error);
+  
+    await waitForSourceOpen();
+  
+    try {
+      if (!sourceBufferRef.current) {
+        sourceBufferRef.current = mediaSourceRef.current.addSourceBuffer(mimeType);
+        console.log('SourceBuffer created for MIME type:', mimeType);
       }
-    } else {
-      console.log('MediaSource not open. Current state:', mediaSourceRef.current.readyState);
+      if (sourceBufferRef.current && !sourceBufferRef.current.updating) {
+        const arrayBuffer = new Uint8Array(audioChunk).buffer;
+        sourceBufferRef.current.appendBuffer(arrayBuffer);
+        console.log('Audio chunk appended, size:', arrayBuffer.byteLength);
+      }
+    } catch (error) {
+      console.error('Error appending audio chunk:', error);
     }
   }, []);
 
@@ -154,7 +169,7 @@ const TellAPhoneApp = () => {
     socketRef.current.on('newBroadcaster', ({ id, username }) => {
       setCurrentBroadcaster({ id, username });
       setHasVoted(false);
-      setupMediaSource();
+      resetMediaSource();
     });
 
     socketRef.current.on('noBroadcaster', () => {
