@@ -5,6 +5,7 @@ const AudioStreamer = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [message, setMessage] = useState('');
+  const [isAudioContextInitialized, setIsAudioContextInitialized] = useState(false);
 
   const wsRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -13,20 +14,7 @@ const AudioStreamer = () => {
   const scheduledAudioRef = useRef([]);
 
   useEffect(() => {
-    wsRef.current = new WebSocket('wss://api.raydeeo.com:3001');
-
-    wsRef.current.onopen = () => {
-      setIsConnected(true);
-      setMessage('Connected to server');
-      initAudioContext();
-    };
-
-    wsRef.current.onclose = () => {
-      setIsConnected(false);
-      setMessage('Disconnected from server');
-    };
-
-    wsRef.current.onmessage = handleAudioMessage;
+    connectWebSocket();
 
     return () => {
       if (wsRef.current) {
@@ -38,14 +26,47 @@ const AudioStreamer = () => {
     };
   }, []);
 
+  const connectWebSocket = () => {
+    wsRef.current = new WebSocket('wss://api.raydeeo.com:3001');
+
+    wsRef.current.onopen = () => {
+      setIsConnected(true);
+      setMessage('Connected to server');
+    };
+
+    wsRef.current.onclose = () => {
+      setIsConnected(false);
+      setMessage('Disconnected from server');
+      // Attempt to reconnect after 5 seconds
+      setTimeout(connectWebSocket, 5000);
+    };
+
+    wsRef.current.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setMessage('Error connecting to server');
+    };
+
+    wsRef.current.onmessage = handleAudioMessage;
+  };
+
   const initAudioContext = () => {
-    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    sourceNodeRef.current = audioContextRef.current.createBufferSource();
-    sourceNodeRef.current.connect(audioContextRef.current.destination);
-    sourceNodeRef.current.start();
+    if (!isAudioContextInitialized) {
+      try {
+        audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+        sourceNodeRef.current = audioContextRef.current.createBufferSource();
+        sourceNodeRef.current.connect(audioContextRef.current.destination);
+        sourceNodeRef.current.start();
+        setIsAudioContextInitialized(true);
+      } catch (error) {
+        console.error('Error initializing AudioContext:', error);
+        setMessage('Error initializing audio playback');
+      }
+    }
   };
 
   const handleAudioMessage = async (event) => {
+    if (!isAudioContextInitialized) return;
+
     const data = JSON.parse(event.data);
     if (data.type === 'audio') {
       const audioBuffer = await decodeAudioData(data.audio);
@@ -85,11 +106,12 @@ const AudioStreamer = () => {
 
   const startBroadcasting = async () => {
     try {
+      initAudioContext();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorderRef.current = new MediaRecorder(stream);
 
       mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0 && wsRef.current.readyState === WebSocket.OPEN) {
+        if (event.data.size > 0 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({
             type: 'audio',
             audio: Array.from(new Uint8Array(event.data))
