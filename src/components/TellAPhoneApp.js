@@ -4,6 +4,7 @@ import io from 'socket.io-client';
 
 const AudioBroadcaster = () => {
   const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [isAudioContextInitialized, setIsAudioContextInitialized] = useState(false);
   const socketRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -23,7 +24,9 @@ const AudioBroadcaster = () => {
     });
 
     socketRef.current.on('audio', (audioData) => {
-      playAudio(audioData);
+      if (isAudioContextInitialized) {
+        playAudio(audioData);
+      }
     });
 
     return () => {
@@ -31,12 +34,20 @@ const AudioBroadcaster = () => {
         socketRef.current.disconnect();
       }
     };
-  }, []);
+  }, [isAudioContextInitialized]);
+
+  const initializeAudioContext = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      setIsAudioContextInitialized(true);
+    }
+  };
 
   const startBroadcasting = async () => {
     try {
+      initializeAudioContext();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
+      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
 
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0 && socketRef.current) {
@@ -65,10 +76,6 @@ const AudioBroadcaster = () => {
   };
 
   const playAudio = async (audioData) => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    }
-
     const audioContext = audioContextRef.current;
 
     try {
@@ -86,19 +93,30 @@ const AudioBroadcaster = () => {
   };
 
   const decodeAudioData = (audioContext, base64Data) => {
-    const binaryString = window.atob(base64Data);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
+    return new Promise((resolve, reject) => {
+      const binaryString = window.atob(base64Data);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      audioContext.decodeAudioData(bytes.buffer, resolve, reject);
+    });
+  };
+
+  const handleButtonClick = () => {
+    initializeAudioContext();
+    if (isBroadcasting) {
+      stopBroadcasting();
+    } else {
+      startBroadcasting();
     }
-    return audioContext.decodeAudioData(bytes.buffer);
   };
 
   return (
     <div>
       <h1>Audio Broadcaster</h1>
-      <button onClick={isBroadcasting ? stopBroadcasting : startBroadcasting}>
+      <button onClick={handleButtonClick}>
         {isBroadcasting ? 'Stop Broadcasting' : 'Start Broadcasting'}
       </button>
     </div>
