@@ -1,106 +1,145 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
-import io from 'socket.io-client';
 
-const AudioStreamer = () => {
+const WebRTCAudioStreamer = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [message, setMessage] = useState('');
-  const socketRef = useRef();
-  const audioContextRef = useRef();
-  const streamSourceRef = useRef();
-  const mediaStreamRef = useRef();
-  const audioBufferRef = useRef(new Float32Array(4096));
-  const audioBufferIndexRef = useRef(0);
+
+  const wsRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const peerConnectionsRef = useRef({});
 
   useEffect(() => {
-    socketRef.current = io('https://api.raydeeo.com');
+    wsRef.current = new WebSocket('ws://api.raydeeo.com');
 
-    socketRef.current.on('connect', () => {
+    wsRef.current.onopen = () => {
       setIsConnected(true);
       setMessage('Connected to server');
-      initializeAudioContext();
-    });
+    };
 
-    socketRef.current.on('disconnect', () => {
+    wsRef.current.onclose = () => {
       setIsConnected(false);
       setMessage('Disconnected from server');
-    });
+    };
 
-    socketRef.current.on('newAudioChunk', (chunk) => {
-      addAudioChunk(new Float32Array(chunk));
-    });
+    wsRef.current.onmessage = handleSignalingMessage;
 
     return () => {
-      socketRef.current.disconnect();
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
+      if (wsRef.current) {
+        wsRef.current.close();
       }
     };
   }, []);
 
-  const initializeAudioContext = () => {
-    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    streamSourceRef.current = audioContextRef.current.createBufferSource();
-    streamSourceRef.current.connect(audioContextRef.current.destination);
-    streamSourceRef.current.start();
+  const handleSignalingMessage = async (event) => {
+    const message = JSON.parse(event.data);
 
-    const scriptNode = audioContextRef.current.createScriptProcessor(1024, 1, 1);
-    scriptNode.onaudioprocess = processAudio;
-    scriptNode.connect(audioContextRef.current.destination);
+    switch (message.type) {
+      case 'offer':
+        await handleOffer(message);
+        break;
+      case 'answer':
+        await handleAnswer(message);
+        break;
+      case 'ice-candidate':
+        await handleIceCandidate(message);
+        break;
+      default:
+        console.warn(`Unhandled message type: ${message.type}`);
+    }
   };
 
-  const processAudio = (audioProcessingEvent) => {
-    const outputBuffer = audioProcessingEvent.outputBuffer;
-    const channelData = outputBuffer.getChannelData(0);
+  const handleOffer = async (message) => {
+    const peerConnection = createPeerConnection(message.senderId);
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(message.offer));
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
 
-    for (let i = 0; i < channelData.length; i++) {
-      if (audioBufferIndexRef.current < audioBufferRef.current.length) {
-        channelData[i] = audioBufferRef.current[audioBufferIndexRef.current];
-        audioBufferIndexRef.current++;
-      } else {
-        channelData[i] = 0;
+    wsRef.current.send(JSON.stringify({
+      type: 'answer',
+      answer: answer,
+      recipientId: message.senderId
+    }));
+  };
+
+  const handleAnswer = async (message) => {
+    const peerConnection = peerConnectionsRef.current[message.senderId];
+    if (peerConnection) {
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(message.answer));
+    }
+  };
+
+  const handleIceCandidate = async (message) => {
+    const peerConnection = peerConnectionsRef.current[message.senderId];
+    if (peerConnection) {
+      await peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
+    }
+  };
+
+  const createPeerConnection = (peerId) => {
+    const peerConnection = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    });
+
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        wsRef.current.send(JSON.stringify({
+          type: 'ice-candidate',
+          candidate: event.candidate,
+          recipientId: peerId
+        }));
       }
-    }
+    };
 
-    if (audioBufferIndexRef.current >= audioBufferRef.current.length) {
-      audioBufferIndexRef.current = 0;
-    }
-  };
+    peerConnection.ontrack = (event) => {
+      const remoteAudio = new Audio();
+      remoteAudio.srcObject = event.streams[0];
+      remoteAudio.play();
+    };
 
-  const addAudioChunk = (chunk) => {
-    for (let i = 0; i < chunk.length; i++) {
-      audioBufferRef.current[audioBufferIndexRef.current] = chunk[i];
-      audioBufferIndexRef.current = (audioBufferIndexRef.current + 1) % audioBufferRef.current.length;
-    }
+    peerConnectionsRef.current[peerId] = peerConnection;
+    return peerConnection;
   };
 
   const startBroadcasting = async () => {
     try {
-      mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const source = audioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
-      const processor = audioContextRef.current.createScriptProcessor(1024, 1, 1);
+      localStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      source.connect(processor);
-      processor.connect(audioContextRef.current.destination);
+      for (const peerId in peerConnectionsRef.current) {
+        const peerConnection = peerConnectionsRef.current[peerId];
+        localStreamRef.current.getTracks().forEach(track => {
+          peerConnection.addTrack(track, localStreamRef.current);
+        });
+      }
 
-      processor.onaudioprocess = (e) => {
-        const audioData = e.inputBuffer.getChannelData(0);
-        socketRef.current.emit('audioChunk', Array.from(audioData));
-      };
+      const offer = await peerConnectionsRef.current[Object.keys(peerConnectionsRef.current)[0]].createOffer();
+      await peerConnectionsRef.current[Object.keys(peerConnectionsRef.current)[0]].setLocalDescription(offer);
+
+      wsRef.current.send(JSON.stringify({
+        type: 'offer',
+        offer: offer
+      }));
 
       setIsBroadcasting(true);
       setMessage('Broadcasting started');
     } catch (error) {
-      console.error('Error accessing microphone:', error);
-      setMessage('Error accessing microphone');
+      console.error('Error starting broadcast:', error);
+      setMessage('Error starting broadcast');
     }
   };
 
   const stopBroadcasting = () => {
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
     }
+
+    for (const peerId in peerConnectionsRef.current) {
+      peerConnectionsRef.current[peerId].close();
+    }
+    peerConnectionsRef.current = {};
+
     setIsBroadcasting(false);
     setMessage('Broadcasting stopped');
   };
@@ -115,7 +154,7 @@ const AudioStreamer = () => {
 
   return (
     <div>
-      <h1>Live Audio Streamer</h1>
+      <h1>WebRTC Audio Streamer</h1>
       <p>Status: {isConnected ? 'Connected' : 'Disconnected'}</p>
       <p>{message}</p>
       <button onClick={handleBroadcastToggle}>
@@ -125,4 +164,4 @@ const AudioStreamer = () => {
   );
 };
 
-export default AudioStreamer;
+export default WebRTCAudioStreamer;
