@@ -156,6 +156,57 @@ const TellAPhoneApp = () => {
     }
   }, [isAudioEnabled]);
 
+  const startBroadcasting = useCallback(() => {
+    if (streamRef.current) {
+      const mimeType = getSupportedMimeType();
+      if (!mimeType) {
+        console.error('No supported mime type found for this browser');
+        return;
+      }
+
+      mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
+        mimeType: mimeType
+      });
+
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0 && socketRef.current) {
+          socketRef.current.emit('audioStream', event.data, mimeType);
+        }
+      };
+
+      mediaRecorderRef.current.start(100);
+      console.log('Broadcasting started with mime type:', mimeType);
+    }
+  }, [getSupportedMimeType]);
+
+  const stopBroadcasting = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    console.log('Broadcasting stopped');
+  }, []);
+
+  const toggleQueue = useCallback(async () => {
+    if (socketRef.current) {
+      if (isInQueue) {
+        socketRef.current.emit('leaveQueue');
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
+      } else {
+        try {
+          streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+          socketRef.current.emit('joinQueue');
+          setIsInQueue(true);
+        } catch (error) {
+          console.error('Error accessing microphone:', error);
+          alert('Unable to access microphone. Please ensure you have granted the necessary permissions.');
+        }
+      }
+    }
+  }, [isInQueue]);
+
   useEffect(() => {
     socketRef.current = io('https://api.raydeeo.com');
 
@@ -240,57 +291,6 @@ const TellAPhoneApp = () => {
       }
     };
   }, [setupMediaSource, appendAudioChunk, startBroadcasting, stopBroadcasting, resetMediaSource]);
-
-  const startBroadcasting = useCallback(() => {
-    if (streamRef.current) {
-      const mimeType = getSupportedMimeType();
-      if (!mimeType) {
-        console.error('No supported mime type found for this browser');
-        return;
-      }
-
-      mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
-        mimeType: mimeType
-      });
-
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0 && socketRef.current) {
-          socketRef.current.emit('audioStream', event.data, mimeType);
-        }
-      };
-
-      mediaRecorderRef.current.start(100);
-      console.log('Broadcasting started with mime type:', mimeType);
-    }
-  }, [getSupportedMimeType]);
-
-  const stopBroadcasting = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    console.log('Broadcasting stopped');
-  }, []);
-
-  const toggleQueue = useCallback(async () => {
-    if (socketRef.current) {
-      if (isInQueue) {
-        socketRef.current.emit('leaveQueue');
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
-          streamRef.current = null;
-        }
-      } else {
-        try {
-          streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-          socketRef.current.emit('joinQueue');
-          setIsInQueue(true);
-        } catch (error) {
-          console.error('Error accessing microphone:', error);
-          alert('Unable to access microphone. Please ensure you have granted the necessary permissions.');
-        }
-      }
-    }
-  }, [isInQueue]);
 
   const handleVote = useCallback((voteType) => {
     if (!hasVoted && currentBroadcaster && currentBroadcaster.id !== socketRef.current.id) {
