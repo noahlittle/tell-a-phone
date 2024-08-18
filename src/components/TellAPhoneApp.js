@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import io from 'socket.io-client';
 import { Mic, MicOff, Users, Radio, InfoIcon, Clock, Volume2, ThumbsUp, ThumbsDown, AlertTriangle } from 'lucide-react';
@@ -82,101 +81,98 @@ const TellAPhoneApp = () => {
   const [votedType, setVotedType] = useState(null);
   const [currentBroadcastVotes, setCurrentBroadcastVotes] = useState([]);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
-  const [audioContext, setAudioContext] = useState(null);
-  const [analyser, setAnalyser] = useState(null);
-  const [gainNode, setGainNode] = useState(null);
-  const [compressor, setCompressor] = useState(null);
 
   const socketRef = useRef(null);
-  const streamRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
   const scriptProcessorRef = useRef(null);
+  const streamRef = useRef(null);
+  const gainNodeRef = useRef(null);
+  const compressorRef = useRef(null);
 
   const BUFFER_SIZE = 4096;
   const SAMPLE_RATE = 48000;
 
+  const getSupportedMimeType = useCallback(() => {
+    const possibleTypes = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/mp4;codecs=opus'
+    ];
+    return possibleTypes.find(mimeType => MediaRecorder.isTypeSupported(mimeType)) || '';
+  }, []);
+
   const initAudio = useCallback(() => {
-    if (!audioContext) {
-      const newAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
-      const newAnalyser = newAudioContext.createAnalyser();
-      const newGainNode = newAudioContext.createGain();
-      const newCompressor = newAudioContext.createDynamicsCompressor();
-      const newScriptProcessor = newAudioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      scriptProcessorRef.current = audioContextRef.current.createScriptProcessor(BUFFER_SIZE, 1, 1);
+      gainNodeRef.current = audioContextRef.current.createGain();
+      compressorRef.current = audioContextRef.current.createDynamicsCompressor();
 
-      setAudioContext(newAudioContext);
-      setAnalyser(newAnalyser);
-      setGainNode(newGainNode);
-      setCompressor(newCompressor);
-      scriptProcessorRef.current = newScriptProcessor;
+      compressorRef.current.threshold.setValueAtTime(-24, audioContextRef.current.currentTime);
+      compressorRef.current.knee.setValueAtTime(40, audioContextRef.current.currentTime);
+      compressorRef.current.ratio.setValueAtTime(12, audioContextRef.current.currentTime);
+      compressorRef.current.attack.setValueAtTime(0, audioContextRef.current.currentTime);
+      compressorRef.current.release.setValueAtTime(0.25, audioContextRef.current.currentTime);
 
-      // Set up compressor
-      newCompressor.threshold.setValueAtTime(-24, newAudioContext.currentTime);
-      newCompressor.knee.setValueAtTime(40, newAudioContext.currentTime);
-      newCompressor.ratio.setValueAtTime(12, newAudioContext.currentTime);
-      newCompressor.attack.setValueAtTime(0, newAudioContext.currentTime);
-      newCompressor.release.setValueAtTime(0.25, newAudioContext.currentTime);
-
-      // Set up gain
-      newGainNode.gain.setValueAtTime(1.2, newAudioContext.currentTime);
+      gainNodeRef.current.gain.setValueAtTime(1.2, audioContextRef.current.currentTime);
     }
-  }, [audioContext]);
+  }, []);
 
-  const startBroadcasting = useCallback(() => {
-    if (streamRef.current && audioContext && gainNode && compressor && analyser && scriptProcessorRef.current) {
-      const source = audioContext.createMediaStreamSource(streamRef.current);
+  const startBroadcasting = useCallback(async () => {
+    try {
+      initAudio();
+      streamRef.current = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: SAMPLE_RATE,
+          channelCount: 1
+        } 
+      });
+      const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
       
-      // Connect nodes: source -> gain -> compressor -> analyser -> scriptProcessor
-      source.connect(gainNode);
-      gainNode.connect(compressor);
-      compressor.connect(analyser);
-      analyser.connect(scriptProcessorRef.current);
-      scriptProcessorRef.current.connect(audioContext.destination);
+      source.connect(gainNodeRef.current);
+      gainNodeRef.current.connect(compressorRef.current);
+      compressorRef.current.connect(analyserRef.current);
+      analyserRef.current.connect(scriptProcessorRef.current);
+      scriptProcessorRef.current.connect(audioContextRef.current.destination);
 
       scriptProcessorRef.current.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
-        // Convert to 16-bit PCM
         const pcmData = new Int16Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
           pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
         }
-        socketRef.current.emit('audio', Array.from(pcmData));
+        socketRef.current.emit('audioStream', Array.from(pcmData));
       };
-
       setIsBroadcasting(true);
-      console.log('Broadcasting started');
+    } catch (error) {
+      console.error('Error starting broadcast:', error);
     }
-  }, [audioContext, gainNode, compressor, analyser]);
+  }, [initAudio]);
 
   const stopBroadcasting = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+    }
     if (scriptProcessorRef.current) {
       scriptProcessorRef.current.disconnect();
     }
-    if (analyser) {
-      analyser.disconnect();
+    if (analyserRef.current) {
+      analyserRef.current.disconnect();
     }
-    if (compressor) {
-      compressor.disconnect();
+    if (gainNodeRef.current) {
+      gainNodeRef.current.disconnect();
     }
-    if (gainNode) {
-      gainNode.disconnect();
+    if (compressorRef.current) {
+      compressorRef.current.disconnect();
     }
     setIsBroadcasting(false);
-    console.log('Broadcasting stopped');
-  }, [analyser, compressor, gainNode]);
-
-  const playAudio = useCallback((audioData) => {
-    if (audioContext && isAudioEnabled) {
-      const buffer = audioContext.createBuffer(1, audioData.length, SAMPLE_RATE);
-      const channelData = buffer.getChannelData(0);
-      for (let i = 0; i < audioData.length; i++) {
-        // Convert back from 16-bit PCM to float
-        channelData[i] = audioData[i] / 0x7FFF;
-      }
-      const source = audioContext.createBufferSource();
-      source.buffer = buffer;
-      source.connect(audioContext.destination);
-      source.start();
-    }
-  }, [audioContext, isAudioEnabled]);
+  }, []);
 
   useEffect(() => {
     socketRef.current = io('https://api.raydeeo.com:3001', {
@@ -184,8 +180,19 @@ const TellAPhoneApp = () => {
       transports: ['websocket']
     });
 
-    socketRef.current.on('connect', () => setIsConnected(true));
-    socketRef.current.on('disconnect', () => setIsConnected(false));
+    socketRef.current.on('connect', () => {
+      console.log('Connected to server');
+      setIsConnected(true);
+    });
+
+    socketRef.current.on('connect_error', (error) => {
+      console.error('Connection error:', error);
+      setIsConnected(false);
+    });
+
+    socketRef.current.on('disconnect', () => {
+      setIsConnected(false);
+    });
 
     socketRef.current.on('queueUpdate', ({ queue }) => setQueueLength(queue));
     socketRef.current.on('queuePositionUpdate', ({ position }) => setQueuePosition(position));
@@ -220,7 +227,7 @@ const TellAPhoneApp = () => {
     });
 
     socketRef.current.on('audio', (audioData) => {
-      if (!isBroadcasting) {
+      if (!isBroadcasting && isAudioEnabled) {
         playAudio(audioData);
       }
     });
@@ -248,8 +255,6 @@ const TellAPhoneApp = () => {
       setCurrentBroadcastVotes([]);
     });
 
-    initAudio();
-
     return () => {
       if (socketRef.current) {
         socketRef.current.disconnect();
@@ -257,11 +262,26 @@ const TellAPhoneApp = () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
-      if (audioContext) {
-        audioContext.close();
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
       }
     };
-  }, [initAudio, isBroadcasting, playAudio, startBroadcasting, stopBroadcasting]);
+  }, [startBroadcasting, stopBroadcasting, isBroadcasting, isAudioEnabled]);
+
+  const playAudio = useCallback((audioData) => {
+    if (!audioContextRef.current) {
+      initAudio();
+    }
+    const buffer = audioContextRef.current.createBuffer(1, audioData.length, SAMPLE_RATE);
+    const channelData = buffer.getChannelData(0);
+    for (let i = 0; i < audioData.length; i++) {
+      channelData[i] = audioData[i] / 0x7FFF;
+    }
+    const source = audioContextRef.current.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioContextRef.current.destination);
+    source.start();
+  }, [initAudio]);
 
   const toggleQueue = useCallback(async () => {
     if (socketRef.current) {
@@ -273,15 +293,7 @@ const TellAPhoneApp = () => {
         }
       } else {
         try {
-          streamRef.current = await navigator.mediaDevices.getUserMedia({ 
-            audio: { 
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-              sampleRate: SAMPLE_RATE,
-              channelCount: 1
-            } 
-          });
+          streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
           socketRef.current.emit('joinQueue');
           setIsInQueue(true);
         } catch (error) {
@@ -353,9 +365,10 @@ const TellAPhoneApp = () => {
       <div className="w-1 h-4 bg-blue-400 rounded-full animate-soundwave animation-delay-400"></div>
     </div>
   );
+
   const BroadcasterVoteDisplay = () => (
     <div className="fixed right-4 bottom-1 transform -translate-y-1/2 w-48 bg-gray-800 p-4 rounded-md shadow-lg">
-      <Badge className='mb-2'>Votes</Badge>
+      <Badge mb-2>Votes</Badge>
       <div className="max-h-64 overflow-y-auto mt-2">
         {currentBroadcastVotes.length === 0 ? (
           <div className="flex items-center justify-center text-sm text-white">No votes yet</div>
@@ -386,7 +399,7 @@ const TellAPhoneApp = () => {
             </DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-          <div className="flex flex-col space-y-1.5">
+            <div className="flex flex-col space-y-1.5">
               <Label htmlFor="username">Choose Your Username</Label>
               <Input
                 id="username"
