@@ -80,6 +80,7 @@ const TellAPhoneApp = () => {
   const [voteStatus, setVoteStatus] = useState(null); // 'upvote', 'downvote', or null
   const [votedType, setVotedType] = useState(null);
   const [currentBroadcastVotes, setCurrentBroadcastVotes] = useState([]);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
 
   const socketRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -112,6 +113,7 @@ const TellAPhoneApp = () => {
       audioRef.current.play().catch(e => console.error('Error playing audio:', e));
     }
   }, []);
+
 
   const waitForSourceOpen = () => {
     return new Promise((resolve) => {
@@ -152,7 +154,7 @@ const TellAPhoneApp = () => {
     } catch (error) {
       console.error('Error appending audio chunk:', error);
     }
-  }, []);
+  }, [isAudioEnabled]);
 
   useEffect(() => {
     socketRef.current = io('https://api.raydeeo.com');
@@ -184,12 +186,15 @@ const TellAPhoneApp = () => {
 
     socketRef.current.on('startBroadcasting', () => {
       setIsBroadcasting(true);
+      setIsAudioEnabled(false); // Disable audio when starting to broadcast
       startBroadcasting();
     });
 
     socketRef.current.on('stopBroadcasting', () => {
       setIsBroadcasting(false);
+      setIsAudioEnabled(true); // Re-enable audio when stopping broadcast
       stopBroadcasting();
+      resetMediaSource(); // Reset the media source to prepare for listening
     });
 
     socketRef.current.on('broadcastAudio', (audioChunk, mimeType) => {
@@ -234,7 +239,7 @@ const TellAPhoneApp = () => {
         }
       }
     };
-  }, [setupMediaSource, appendAudioChunk]);
+  }, [setupMediaSource, appendAudioChunk, startBroadcasting, stopBroadcasting, resetMediaSource]);
 
   const startBroadcasting = useCallback(() => {
     if (streamRef.current) {
