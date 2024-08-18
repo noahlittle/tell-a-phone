@@ -310,7 +310,7 @@ const TellAPhoneApp = () => {
 
   const BroadcasterVoteDisplay = () => (
     <div className="fixed right-4 bottom-1 transform -translate-y-1/2 w-48 bg-gray-800 p-4 rounded-md shadow-lg">
-      <Badge mb-2>Votes</Badge>
+      <Badge>Votes</Badge>
       <div className="max-h-64 overflow-y-auto mt-2">
         {currentBroadcastVotes.length === 0 ? (
           <div className="flex items-center justify-center text-sm text-white">No votes yet</div>
