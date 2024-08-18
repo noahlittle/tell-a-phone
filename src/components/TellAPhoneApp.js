@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import io from 'socket.io-client';
 import { Mic, MicOff, Users, Radio, InfoIcon, Clock, Volume2, ThumbsUp, ThumbsDown, AlertTriangle } from 'lucide-react';
