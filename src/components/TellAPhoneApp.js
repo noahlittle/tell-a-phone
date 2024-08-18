@@ -82,23 +82,11 @@ const TellAPhoneApp = () => {
   const [currentBroadcastVotes, setCurrentBroadcastVotes] = useState([]);
 
   const socketRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
   const audioContextRef = useRef(null);
   const sourceNodeRef = useRef(null);
-  const gainNodeRef = useRef(null);
-  const bufferRef = useRef([]);
-  const isPlayingRef = useRef(false);
-
-  const getSupportedMimeType = useCallback(() => {
-    const possibleTypes = [
-      'audio/webm;codecs=opus',
-      'audio/webm',
-      'audio/ogg;codecs=opus',
-      'audio/mp4;codecs=opus'
-    ];
-    return possibleTypes.find(mimeType => MediaRecorder.isTypeSupported(mimeType)) || '';
-  }, []);
+  const audioBufferRef = useRef(null);
+  const audioWorkletNodeRef = useRef(null);
 
   useEffect(() => {
     socketRef.current = io('https://api.raydeeo.com');
@@ -174,71 +162,60 @@ const TellAPhoneApp = () => {
       if (audioContextRef.current) {
         audioContextRef.current.close();
       }
+      if (audioWorkletNodeRef.current) {
+        audioWorkletNodeRef.current.disconnect();
+      }
     };
   }, []);
 
   const handleIncomingAudio = useCallback((audioChunk) => {
-    bufferRef.current.push(audioChunk);
-    if (!isPlayingRef.current) {
-      playAudioFromBuffer();
-    }
-  }, []);
-
-  const playAudioFromBuffer = useCallback(() => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      gainNodeRef.current = audioContextRef.current.createGain();
-      gainNodeRef.current.connect(audioContextRef.current.destination);
     }
 
-    const playNextChunk = () => {
-      if (bufferRef.current.length > 0) {
-        const audioChunk = bufferRef.current.shift();
-        audioContextRef.current.decodeAudioData(audioChunk, (audioBuffer) => {
-          sourceNodeRef.current = audioContextRef.current.createBufferSource();
-          sourceNodeRef.current.buffer = audioBuffer;
-          sourceNodeRef.current.connect(gainNodeRef.current);
-          sourceNodeRef.current.onended = playNextChunk;
-          sourceNodeRef.current.start();
-          isPlayingRef.current = true;
-        }, (error) => {
-          console.error('Error decoding audio data:', error);
-          playNextChunk();
-        });
-      } else {
-        isPlayingRef.current = false;
-      }
-    };
+    if (!audioWorkletNodeRef.current) {
+      setupAudioWorklet();
+    }
 
-    playNextChunk();
+    if (audioWorkletNodeRef.current) {
+      const float32Array = new Float32Array(audioChunk);
+      audioWorkletNodeRef.current.port.postMessage(float32Array);
+    }
   }, []);
+
+  const setupAudioWorklet = async () => {
+    if (!audioContextRef.current) return;
+
+    try {
+      await audioContextRef.current.audioWorklet.addModule('/audio-processor.js');
+      audioWorkletNodeRef.current = new AudioWorkletNode(audioContextRef.current, 'audio-processor');
+      audioWorkletNodeRef.current.connect(audioContextRef.current.destination);
+    } catch (error) {
+      console.error('Error setting up AudioWorklet:', error);
+    }
+  };
 
   const startBroadcasting = useCallback(() => {
     if (streamRef.current) {
-      const mimeType = getSupportedMimeType();
-      if (!mimeType) {
-        console.error('No supported mime type found for this browser');
-        return;
-      }
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(streamRef.current);
+      const processor = audioContext.createScriptProcessor(1024, 1, 1);
 
-      mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
-        mimeType: mimeType
-      });
+      source.connect(processor);
+      processor.connect(audioContext.destination);
 
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0 && socketRef.current) {
-          socketRef.current.emit('audioStream', event.data);
+      processor.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        if (socketRef.current) {
+          socketRef.current.emit('audioStream', inputData);
         }
       };
-
-      mediaRecorderRef.current.start(100);
-      console.log('Broadcasting started with mime type:', mimeType);
     }
-  }, [getSupportedMimeType]);
+  }, []);
 
   const stopBroadcasting = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
     }
     console.log('Broadcasting stopped');
   }, []);
