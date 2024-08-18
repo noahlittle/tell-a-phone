@@ -136,15 +136,31 @@ const TellAPhoneApp = () => {
     console.log('Broadcasting stopped');
   }, []);
 
-  useEffect(() => {
+  uuseEffect(() => {
     socketRef.current = io('https://api.raydeeo.com:3001', {
       withCredentials: true,
       transports: ['websocket']
     });
-
+  
     socketRef.current.on('connect', () => {
-      console.log('Connected to server');
+      console.log('Connected to server with ID:', socketRef.current.id);
       setIsConnected(true);
+    });
+  
+    socketRef.current.on('disconnect', (reason) => {
+      console.log('Disconnected from server. Reason:', reason);
+      setIsConnected(false);
+    });
+  
+    socketRef.current.on('error', (error) => {
+      console.error('Socket error:', error);
+    });
+  
+    socketRef.current.on('startBroadcasting', () => {
+      console.log('Received startBroadcasting event');
+      setIsBroadcasting(true);
+      setIsAudioEnabled(false);
+      startBroadcasting();
     });
 
     socketRef.current.on('connect_error', (error) => {
@@ -152,19 +168,12 @@ const TellAPhoneApp = () => {
       setIsConnected(false);
     });
 
-    socketRef.current.on('disconnect', () => setIsConnected(false));
 
     socketRef.current.on('queueUpdate', ({ queue }) => setQueueLength(queue));
     socketRef.current.on('queuePositionUpdate', ({ position }) => setQueuePosition(position));
     socketRef.current.on('leftQueue', () => {
       setIsInQueue(false);
       setQueuePosition(0);
-    });
-    socketRef.current.on('startBroadcasting', () => {
-      console.log('Received startBroadcasting event');
-      setIsBroadcasting(true);
-      setIsAudioEnabled(false);
-      startBroadcasting();
     });
     
 
@@ -240,16 +249,17 @@ const TellAPhoneApp = () => {
   const toggleQueue = useCallback(async () => {
     if (socketRef.current) {
       if (isInQueue) {
+        console.log('Leaving queue');
         socketRef.current.emit('leaveQueue');
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop());
           streamRef.current = null;
         }
       } else {
+        console.log('Joining queue');
         try {
           streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
           socketRef.current.emit('joinQueue');
-          console.log('Emitted joinQueue event');
           setIsInQueue(true);
         } catch (error) {
           console.error('Error accessing microphone:', error);
