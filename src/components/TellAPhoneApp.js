@@ -136,7 +136,7 @@ const TellAPhoneApp = () => {
     console.log('Broadcasting stopped');
   }, []);
 
-  uuseEffect(() => {
+  useEffect(() => {
     socketRef.current = io('https://api.raydeeo.com:3001', {
       withCredentials: true,
       transports: ['websocket']
