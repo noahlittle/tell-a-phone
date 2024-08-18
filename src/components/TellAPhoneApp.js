@@ -171,6 +171,22 @@ const AudioBroadcaster = () => {
     socketRef.current.emit('stopBroadcasting');
   };
 
+  const playAudio = (audioData) => {
+    if (!audioContextRef.current) {
+      initAudio();
+    }
+    const buffer = audioContextRef.current.createBuffer(1, audioData.length, SAMPLE_RATE);
+    const channelData = buffer.getChannelData(0);
+    for (let i = 0; i < audioData.length; i++) {
+      // Convert back from 16-bit PCM to float
+      channelData[i] = audioData[i] / 0x7FFF;
+    }
+    const source = audioContextRef.current.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioContextRef.current.destination);
+    source.start();
+  };
+
   const handleButtonClick = () => {
     if (isBroadcasting) {
       stopBroadcasting();
@@ -178,6 +194,7 @@ const AudioBroadcaster = () => {
       socketRef.current.emit('requestBroadcast');
     }
   };
+
   return (
     <Card className="w-[350px]">
       <CardHeader>
