@@ -118,18 +118,30 @@ const TellAPhoneApp = () => {
     }
   }, []);
 
-  const appendAudioChunk = useCallback(async (audioChunk) => {
+  const appendAudioChunk = useCallback(async (audioChunk, mimeType) => {
     if (!audioContextRef.current) {
       await setupAudio();
     }
 
-    const arrayBuffer = await audioChunk.arrayBuffer();
-    audioContextRef.current.decodeAudioData(arrayBuffer, (buffer) => {
+    let arrayBuffer;
+    if (audioChunk instanceof ArrayBuffer) {
+      arrayBuffer = audioChunk;
+    } else if (audioChunk instanceof Blob) {
+      arrayBuffer = await audioChunk.arrayBuffer();
+    } else {
+      console.error('Unsupported audio chunk type:', typeof audioChunk);
+      return;
+    }
+
+    try {
+      const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
       const source = audioContextRef.current.createBufferSource();
-      source.buffer = buffer;
+      source.buffer = audioBuffer;
       source.connect(audioContextRef.current.destination);
       source.start();
-    }, (err) => console.error('Error decoding audio data', err));
+    } catch (err) {
+      console.error('Error decoding audio data', err);
+    }
   }, [setupAudio]);
 
   const stopBroadcasting = useCallback(() => {
@@ -249,7 +261,7 @@ const TellAPhoneApp = () => {
         audioRef.current.src = '';
       }
     };
-  }, [setupAudio, appendAudioChunk, playAudioFallback]);
+  }, [setupAudio, appendAudioChunk, playAudioFallback, isBroadcasting]);
 
   const startBroadcasting = useCallback(() => {
     if (streamRef.current) {
