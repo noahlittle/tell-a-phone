@@ -77,19 +77,18 @@ const TellAPhoneApp = () => {
   const [upvotes, setUpvotes] = useState(0);
   const [downvotes, setDownvotes] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
-  const [voteStatus, setVoteStatus] = useState(null); // 'upvote', 'downvote', or null
+  const [voteStatus, setVoteStatus] = useState(null);
   const [votedType, setVotedType] = useState(null);
   const [currentBroadcastVotes, setCurrentBroadcastVotes] = useState([]);
 
   const socketRef = useRef(null);
   const mediaRecorderRef = useRef(null);
-  const audioRef = useRef(new Audio());
+  const streamRef = useRef(null);
   const audioContextRef = useRef(null);
   const sourceNodeRef = useRef(null);
-  const mediaSourceRef = useRef(null);
-  const sourceBufferRef = useRef(null);
-  const streamRef = useRef(null);
-
+  const gainNodeRef = useRef(null);
+  const bufferRef = useRef([]);
+  const isPlayingRef = useRef(false);
 
   const getSupportedMimeType = useCallback(() => {
     const possibleTypes = [
@@ -99,87 +98,6 @@ const TellAPhoneApp = () => {
       'audio/mp4;codecs=opus'
     ];
     return possibleTypes.find(mimeType => MediaRecorder.isTypeSupported(mimeType)) || '';
-  }, []);
-
-  
-  const [isMediaSourceSupported, setIsMediaSourceSupported] = useState(true);
-  const audioChunksRef = useRef([]);
-
-  const setupAudio = useCallback(() => {
-    if (typeof AudioContext !== 'undefined') {
-      audioContextRef.current = new AudioContext();
-      sourceNodeRef.current = audioContextRef.current.createBufferSource();
-      sourceNodeRef.current.connect(audioContextRef.current.destination);
-      sourceNodeRef.current.start();
-      return Promise.resolve();
-    } else {
-      console.error('AudioContext is not supported in this browser');
-      return Promise.reject('AudioContext not supported');
-    }
-  }, []);
-
-  const appendAudioChunk = useCallback(async (audioChunk, mimeType) => {
-    if (!audioContextRef.current) {
-      await setupAudio();
-    }
-
-    let arrayBuffer;
-    if (audioChunk instanceof ArrayBuffer) {
-      arrayBuffer = audioChunk;
-    } else if (audioChunk instanceof Blob) {
-      arrayBuffer = await audioChunk.arrayBuffer();
-    } else {
-      console.error('Unsupported audio chunk type:', typeof audioChunk);
-      return;
-    }
-
-    try {
-      const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
-      const source = audioContextRef.current.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContextRef.current.destination);
-      source.start();
-    } catch (err) {
-      console.error('Error decoding audio data', err);
-    }
-  }, [setupAudio]);
-
-  const stopBroadcasting = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    console.log('Broadcasting stopped');
-  }, []);
-
-  const toggleQueue = useCallback(async () => {
-    if (socketRef.current) {
-      if (isInQueue) {
-        socketRef.current.emit('leaveQueue');
-        stopBroadcasting();
-      } else {
-        try {
-          streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-          socketRef.current.emit('joinQueue');
-          setIsInQueue(true);
-        } catch (error) {
-          console.error('Error accessing microphone:', error);
-          alert('Unable to access microphone. Please ensure you have granted the necessary permissions.');
-        }
-      }
-    }
-  }, [isInQueue, stopBroadcasting]);
-
-  const playAudioFallback = useCallback(() => {
-    if (audioChunksRef.current.length > 0) {
-      const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-      audioRef.current.src = URL.createObjectURL(blob);
-      audioRef.current.play().catch(e => console.error('Error playing audio:', e));
-      audioChunksRef.current = [];
-    }
   }, []);
 
   useEffect(() => {
@@ -194,26 +112,21 @@ const TellAPhoneApp = () => {
       setIsInQueue(false);
       setQueuePosition(0);
     });
-
-    socketRef.current.on('newBroadcaster', async ({ id, username }) => {
+    socketRef.current.on('newBroadcaster', ({ id, username }) => {
       setCurrentBroadcaster({ id, username });
       setHasVoted(false);
-      await setupAudio();
+      setVotedType(null);
+      setCurrentBroadcastVotes([]);
     });
 
-    socketRef.current.on('broadcastAudio', (audioChunk, mimeType) => {
-      if (!isBroadcasting) {
-        appendAudioChunk(audioChunk, mimeType);
-      }
-    });
     socketRef.current.on('noBroadcaster', () => {
       setCurrentBroadcaster(null);
-      audioRef.current.src = '';
       setTimeLeft(10000);
       setTotalTime(10000);
       setUpvotes(0);
       setDownvotes(0);
       setTotalDuration(0);
+      setCurrentBroadcastVotes([]);
     });
 
     socketRef.current.on('startBroadcasting', () => {
@@ -224,6 +137,12 @@ const TellAPhoneApp = () => {
     socketRef.current.on('stopBroadcasting', () => {
       setIsBroadcasting(false);
       stopBroadcasting();
+    });
+
+    socketRef.current.on('broadcastAudio', (audioChunk) => {
+      if (!isBroadcasting) {
+        handleIncomingAudio(audioChunk);
+      }
     });
 
     socketRef.current.on('timeUpdate', ({ timeLeft, totalTime }) => {
@@ -244,10 +163,6 @@ const TellAPhoneApp = () => {
     socketRef.current.on('voteUpdate', ({ username, voteType }) => {
       setCurrentBroadcastVotes(prevVotes => [...prevVotes, { username, voteType }]);
     });
-  
-    socketRef.current.on('newBroadcaster', () => {
-      setCurrentBroadcastVotes([]); // Reset votes for new broadcast
-    });
 
     return () => {
       if (socketRef.current) {
@@ -256,12 +171,47 @@ const TellAPhoneApp = () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = '';
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
       }
     };
-  }, [setupAudio, appendAudioChunk, playAudioFallback, isBroadcasting]);
+  }, []);
+
+  const handleIncomingAudio = useCallback((audioChunk) => {
+    bufferRef.current.push(audioChunk);
+    if (!isPlayingRef.current) {
+      playAudioFromBuffer();
+    }
+  }, []);
+
+  const playAudioFromBuffer = useCallback(() => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      gainNodeRef.current = audioContextRef.current.createGain();
+      gainNodeRef.current.connect(audioContextRef.current.destination);
+    }
+
+    const playNextChunk = () => {
+      if (bufferRef.current.length > 0) {
+        const audioChunk = bufferRef.current.shift();
+        audioContextRef.current.decodeAudioData(audioChunk, (audioBuffer) => {
+          sourceNodeRef.current = audioContextRef.current.createBufferSource();
+          sourceNodeRef.current.buffer = audioBuffer;
+          sourceNodeRef.current.connect(gainNodeRef.current);
+          sourceNodeRef.current.onended = playNextChunk;
+          sourceNodeRef.current.start();
+          isPlayingRef.current = true;
+        }, (error) => {
+          console.error('Error decoding audio data:', error);
+          playNextChunk();
+        });
+      } else {
+        isPlayingRef.current = false;
+      }
+    };
+
+    playNextChunk();
+  }, []);
 
   const startBroadcasting = useCallback(() => {
     if (streamRef.current) {
@@ -277,7 +227,7 @@ const TellAPhoneApp = () => {
 
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0 && socketRef.current) {
-          socketRef.current.emit('audioStream', event.data, mimeType);
+          socketRef.current.emit('audioStream', event.data);
         }
       };
 
@@ -286,6 +236,33 @@ const TellAPhoneApp = () => {
     }
   }, [getSupportedMimeType]);
 
+  const stopBroadcasting = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    console.log('Broadcasting stopped');
+  }, []);
+
+  const toggleQueue = useCallback(async () => {
+    if (socketRef.current) {
+      if (isInQueue) {
+        socketRef.current.emit('leaveQueue');
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
+      } else {
+        try {
+          streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+          socketRef.current.emit('joinQueue');
+          setIsInQueue(true);
+        } catch (error) {
+          console.error('Error accessing microphone:', error);
+          alert('Unable to access microphone. Please ensure you have granted the necessary permissions.');
+        }
+      }
+    }
+  }, [isInQueue]);
 
   const handleVote = useCallback((voteType) => {
     if (!hasVoted && currentBroadcaster && currentBroadcaster.id !== socketRef.current.id) {
@@ -294,14 +271,6 @@ const TellAPhoneApp = () => {
       setVotedType(voteType);
     }
   }, [hasVoted, currentBroadcaster]);
-
-  const handleShare = () => {
-    navigator.clipboard.writeText(window.location.href).then(() => {
-      alert('Link copied to clipboard!');
-    }).catch(err => {
-      console.error('Failed to copy: ', err);
-    });
-  };
 
   const checkUsername = useCallback((username) => {
     return new Promise((resolve) => {
@@ -348,8 +317,6 @@ const TellAPhoneApp = () => {
       <div className="w-1 h-4 bg-blue-400 rounded-full animate-soundwave animation-delay-400"></div>
     </div>
   );
-
-
 
   const BroadcasterVoteDisplay = () => (
     <div className="fixed right-4 bottom-1 transform -translate-y-1/2 w-48 bg-gray-800 p-4 rounded-md shadow-lg">
@@ -440,14 +407,14 @@ const TellAPhoneApp = () => {
 
   return (
     <>
-    <div className="w-full bg-blue-600 text-white p-2 text-center text-sm">
+      <div className="w-full bg-blue-600 text-white p-2 text-center text-sm">
         Want to start journaling consistently? Try Reverie, a journal that calls you every day. 
         <a href="https://callreverie.com" target="_blank" rel="noopener noreferrer" className="underline ml-1">Learn More</a>
       </div>
-    <div className="flex items-center justify-center min-h-screen bg-gray-900 p-4">
-      <Card className="w-full max-w-md bg-gray-800 text-gray-100 shadow-lg">
-        <CardHeader className="space-y-1 border-b border-gray-700 pb-4">
-        <div className='flex items-center'>
+      <div className="flex items-center justify-center min-h-screen bg-gray-900 p-4">
+        <Card className="w-full max-w-md bg-gray-800 text-gray-100 shadow-lg">
+          <CardHeader className="space-y-1 border-b border-gray-700 pb-4">
+            <div className='flex items-center'>
               {isConnected ? (
                 <Badge variant="secondary" className="mr-2 bg-green-500 text-white w-min mb-2 flex items-center">
                   Connected
@@ -463,141 +430,137 @@ const TellAPhoneApp = () => {
                 <Users className="w-5 h-5 mr-2 text-white" />{listenerCount} Listeners
               </Badge>
             </div>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-2xl font-bold text-white">Raydeeo</CardTitle>
-            <Radio className="w-6 h-6 text-blue-400" />
-          </div>
-          <CardDescription className="text-gray-400">The crowdsourced radio station</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 pt-4">
-          <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-gray-300">Current Broadcaster:</span>
-              {currentBroadcaster ? (
-                <Badge variant="secondary" className="bg-blue-500 text-white">{currentBroadcaster.username}</Badge>
-              ) : (
-                <Badge variant="outline" className="text-gray-400 border-gray-600">None</Badge>
+              <CardTitle className="text-2xl font-bold text-white">Raydeeo</CardTitle>
+              <Radio className="w-6 h-6 text-blue-400" />
+            </div>
+            <CardDescription className="text-gray-400">The crowdsourced radio station</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-gray-300">Current Broadcaster:</span>
+                {currentBroadcaster ? (
+                  <Badge variant="secondary" className="bg-blue-500 text-white">{currentBroadcaster.username}</Badge>
+                ) : (
+                  <Badge variant="outline" className="text-gray-400 border-gray-600">None</Badge>
+                )}
+              </div>
+              {currentBroadcaster && (
+                <div className='flex w-full'>
+                  <div className={`space-y-1 p-2  w-full rounded-md ${isBroadcasting ? 'bg-red-500 animate-pulse' : 'bg-gray-700'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <span className={`font-bold ${isBroadcasting ? 'text-white' : 'text-gray-300'}`}>
+                          {isBroadcasting ? 'LIVE' : 'Listening...'}
+                        </span>
+                        {!isBroadcasting && <SoundWaveAnimation />}
+                      </div>
+                      <div className="flex items-center">
+                        <Clock className={`w-4 h-4 mr-2 ${isBroadcasting ? 'text-white' : 'text-gray-300'}`} />
+                        <span className={isBroadcasting ? 'text-white' : 'text-gray-300'}>
+                          {(timeLeft / 1000).toFixed(1)}s
+                        </span>
+                      </div>
+                    </div>
+                    <Progress value={(1 - timeLeft / totalTime) * 100} className="w-full" />
+                    <div className="flex justify-between items-center text-sm">
+                      <div className="flex items-center space-x-2">
+                        <ThumbsUp className="w-4 h-4 text-green-400" />
+                        <span>{upvotes}</span>
+                        <ThumbsDown className="w-4 h-4 text-red-400" />
+                        <span>{downvotes}</span>
+                      </div>
+                      <span>Total: {(totalDuration / 1000).toFixed(1)}s</span>
+                    </div>
+                  </div>
+                  <div className='mt-1'>
+                    {!isBroadcasting && currentBroadcaster && (
+                      <div className="flex flex-col items-end space-y-1 ml-2">
+                        <VoteButton
+                          type="upvote"
+                          onClick={() => handleVote('upvote')}
+                          disabled={hasVoted || isBroadcasting}
+                          voted={votedType === 'upvote'}
+                        />
+                        <VoteButton
+                          type="downvote"
+                          onClick={() => handleVote('downvote')}
+                          disabled={hasVoted || isBroadcasting}
+                          voted={votedType === 'downvote'}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
-            {currentBroadcaster && (
-              <div className='flex w-full'>
-              <div className={`space-y-1 p-2  w-full rounded-md ${isBroadcasting ? 'bg-red-500 animate-pulse' : 'bg-gray-700'}`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <span className={`font-bold ${isBroadcasting ? 'text-white' : 'text-gray-300'}`}>
-                      {isBroadcasting ? 'LIVE' : 'Listening...'}
-                    </span>
-                    {!isBroadcasting && <SoundWaveAnimation />}
-                  </div>
-                  <div className="flex items-center">
-                    <Clock className={`w-4 h-4 mr-2 ${isBroadcasting ? 'text-white' : 'text-gray-300'}`} />
-                    <span className={isBroadcasting ? 'text-white' : 'text-gray-300'}>
-                      {(timeLeft / 1000).toFixed(1)}s
-                    </span>
-                  </div>
-                </div>
-                <Progress value={(1 - timeLeft / totalTime) * 100} className="w-full" />
-                <div className="flex justify-between items-center text-sm">
-                  <div className="flex items-center space-x-2">
-                    <ThumbsUp className="w-4 h-4 text-green-400" />
-                    <span>{upvotes}</span>
-                    <ThumbsDown className="w-4 h-4 text-red-400" />
-                    <span>{downvotes}</span>
-                  </div>
-                  <span>Total: {(totalDuration / 1000).toFixed(1)}s</span>
-                </div>
-                
+
+            <div className="flex items-center justify-between text-gray-300">
+              <div className="flex items-center">
+                <Users className="w-5 h-5 mr-2 text-blue-400" />
+                <span>Queue: {queueLength}</span>
               </div>
-              <div className='mt-1'>
-              {!isBroadcasting && currentBroadcaster && (
-    <div className="flex flex-col items-end space-y-1 ml-2">
-    <VoteButton
-      type="upvote"
-      onClick={() => handleVote('upvote')}
-      disabled={hasVoted || isBroadcasting}
-      voted={votedType === 'upvote'}
-    />
-    <VoteButton
-      type="downvote"
-      onClick={() => handleVote('downvote')}
-      disabled={hasVoted || isBroadcasting}
-      voted={votedType === 'downvote'}
-    />
-  </div>
-            )}
-                </div>
-                </div>
-
-            )}
-          </div>
-
-          <div className="flex items-center justify-between text-gray-300">
-            <div className="flex items-center">
-              <Users className="w-5 h-5 mr-2 text-blue-400" />
-              <span>Queue: {queueLength}</span>
+              {isInQueue ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={toggleQueue}
+                        className="bg-yellow-500 text-gray-900 hover:bg-yellow-600"
+                      >
+                        Position: {queuePosition}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Click to leave queue</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={toggleQueue}
+                  className="bg-blue-500 hover:bg-blue-600 text-white"
+                >
+                  <Radio className='mr-2' /> 
+                  {queueLength === 0 && !currentBroadcaster ? ' Go Live!' : ' Join Queue'}
+                </Button>
+              )}
             </div>
-            {isInQueue ? (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={toggleQueue}
-                      className="bg-yellow-500 text-gray-900 hover:bg-yellow-600"
-                    >
-                      Position: {queuePosition}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Click to leave queue</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={toggleQueue}
-                className="bg-blue-500 hover:bg-blue-600 text-white"
-              >
-                <Radio className='mr-2' /> 
-                {queueLength === 0 && !currentBroadcaster ? ' Go Live!' : ' Join Queue'}
-              </Button>
-            )}
-          </div>
-            </CardContent>
-            <CardFooter className="flex flex-col border-t border-gray-700 pt-4 space-y-2">
-          <Button 
-            variant={isBroadcasting ? "destructive" : "default"} 
-            className="w-full"
-            disabled={isBroadcasting}
-          >
-            {isBroadcasting ? (
-              <>
-                <Mic className="mr-2" />
-                <span>You&apos;re Broadcasting!</span>
-              </>
-            ) : isInQueue && queuePosition === 1 && currentBroadcaster ? (
-              <>
-                <Clock className="mr-2" />
-                <span>You&apos;re live in {Math.ceil(timeLeft / 1000)}s</span>
-              </>
-            ) : (
-              <>
-                <MicOff className="mr-2" />
-                <span className="text-sm">You&apos;re Muted</span>
-              </>
-            )}
-          </Button>
-        </CardFooter>
-        <div className='h-100'>
-        </div>
-          </Card>
-          {isBroadcasting && <BroadcasterVoteDisplay />}
-        </div>
-      </>
-      );
-    };
-    
-    export default TellAPhoneApp;
+          </CardContent>
+          <CardFooter className="flex flex-col border-t border-gray-700 pt-4 space-y-2">
+            <Button 
+              variant={isBroadcasting ? "destructive" : "default"} 
+              className="w-full"
+              disabled={isBroadcasting}
+            >
+              {isBroadcasting ? (
+                <>
+                  <Mic className="mr-2" />
+                  <span>You're Broadcasting!</span>
+                </>
+              ) : isInQueue && queuePosition === 1 && currentBroadcaster ? (
+                <>
+                  <Clock className="mr-2" />
+                  <span>You're live in {Math.ceil(timeLeft / 1000)}s</span>
+                </>
+              ) : (
+                <>
+                  <MicOff className="mr-2" />
+                  <span className="text-sm">You're Muted</span>
+                </>
+              )}
+            </Button>
+          </CardFooter>
+        </Card>
+        {isBroadcasting && <BroadcasterVoteDisplay />}
+      </div>
+    </>
+  );
+};
+
+export default TellAPhoneApp;
