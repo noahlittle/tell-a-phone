@@ -5,7 +5,8 @@ import io from 'socket.io-client';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MicIcon, MicOffIcon, UserIcon, ListOrderedIcon } from "lucide-react";
+import { MicIcon, MicOffIcon, UserIcon, ListOrderedIcon, TimerIcon } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 
 const AudioBroadcaster = () => {
   const [isBroadcasting, setIsBroadcasting] = useState(false);
@@ -13,6 +14,7 @@ const AudioBroadcaster = () => {
   const [onlineUsers, setOnlineUsers] = useState(0);
   const [queuePosition, setQueuePosition] = useState(null);
   const [queueLength, setQueueLength] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(10);
   const socketRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -20,9 +22,11 @@ const AudioBroadcaster = () => {
   const streamRef = useRef(null);
   const gainNodeRef = useRef(null);
   const compressorRef = useRef(null);
+  const timerRef = useRef(null);
 
   const BUFFER_SIZE = 4096;
   const SAMPLE_RATE = 48000;
+  const BROADCAST_LIMIT = 10; // 10 seconds
 
   useEffect(() => {
     socketRef.current = io('https://api.raydeeo.com:3001', {
@@ -41,6 +45,7 @@ const AudioBroadcaster = () => {
       setIsBroadcasting(false);
       setQueuePosition(null);
       setQueueLength(0);
+      stopTimer();
     });
 
     socketRef.current.on('connect_error', (error) => {
@@ -73,9 +78,38 @@ const AudioBroadcaster = () => {
       if (audioContextRef.current) {
         audioContextRef.current.close();
       }
+      stopTimer();
     };
   }, []);
 
+  useEffect(() => {
+    if (isBroadcasting) {
+      startTimer();
+    } else {
+      stopTimer();
+    }
+  }, [isBroadcasting]);
+
+  const startTimer = () => {
+    setTimeLeft(BROADCAST_LIMIT);
+    timerRef.current = setInterval(() => {
+      setTimeLeft((prevTime) => {
+        if (prevTime <= 1) {
+          stopBroadcasting();
+          return 0;
+        }
+        return prevTime - 1;
+      });
+    }, 1000);
+  };
+
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setTimeLeft(BROADCAST_LIMIT);
+  };
 
   const initAudio = () => {
     if (!audioContextRef.current) {
@@ -111,6 +145,7 @@ const AudioBroadcaster = () => {
       });
       const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
       
+      // Connect nodes: source -> gain -> compressor -> analyser -> scriptProcessor
       source.connect(gainNodeRef.current);
       gainNodeRef.current.connect(compressorRef.current);
       compressorRef.current.connect(analyserRef.current);
@@ -119,6 +154,7 @@ const AudioBroadcaster = () => {
 
       scriptProcessorRef.current.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
+        // Convert to 16-bit PCM
         const pcmData = new Int16Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
           pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
@@ -148,7 +184,7 @@ const AudioBroadcaster = () => {
       compressorRef.current.disconnect();
     }
     setIsBroadcasting(false);
-    socketRef.current.emit('stopBroadcasting');
+    socketRef.current.emit('broadcastEnded');
   };
 
   const playAudio = (audioData) => {
@@ -166,6 +202,7 @@ const AudioBroadcaster = () => {
     source.connect(audioContextRef.current.destination);
     source.start();
   };
+
   const joinQueue = () => {
     socketRef.current.emit('joinQueue');
   };
@@ -224,6 +261,15 @@ const AudioBroadcaster = () => {
             <Badge variant="secondary">
               {queuePosition === 0 ? "Broadcasting" : `Queue Position: ${queuePosition + 1}`}
             </Badge>
+          )}
+          {isBroadcasting && (
+            <div className="w-full space-y-2">
+              <div className="flex justify-between items-center">
+                <TimerIcon className="h-4 w-4" />
+                <span>{timeLeft}s left</span>
+              </div>
+              <Progress value={(timeLeft / BROADCAST_LIMIT) * 100} />
+            </div>
           )}
         </div>
       </CardContent>
