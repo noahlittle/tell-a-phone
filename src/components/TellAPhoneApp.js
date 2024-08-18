@@ -80,13 +80,82 @@ const TellAPhoneApp = () => {
   const [voteStatus, setVoteStatus] = useState(null);
   const [votedType, setVotedType] = useState(null);
   const [currentBroadcastVotes, setCurrentBroadcastVotes] = useState([]);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  const [audioContext, setAudioContext] = useState(null);
+  const [audioSource, setAudioSource] = useState(null);
 
   const socketRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const sourceNodeRef = useRef(null);
-  const audioBufferRef = useRef(null);
-  const audioWorkletNodeRef = useRef(null);
+
+  const getSupportedMimeType = useCallback(() => {
+    const possibleTypes = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/mp4;codecs=opus'
+    ];
+    return possibleTypes.find(mimeType => MediaRecorder.isTypeSupported(mimeType)) || '';
+  }, []);
+
+  const setupAudioContext = useCallback(() => {
+    if (!audioContext) {
+      const newAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+      setAudioContext(newAudioContext);
+    }
+  }, [audioContext]);
+
+  const appendAudioChunk = useCallback(async (audioChunk) => {
+    if (!audioContext || !isAudioEnabled) {
+      console.log('AudioContext not initialized or audio disabled');
+      return;
+    }
+
+    try {
+      const arrayBuffer = await audioChunk.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContext.destination);
+      source.start();
+
+      setAudioSource(source);
+    } catch (error) {
+      console.error('Error processing audio chunk:', error);
+    }
+  }, [audioContext, isAudioEnabled]);
+
+  const startBroadcasting = useCallback(() => {
+    if (streamRef.current) {
+      const mimeType = getSupportedMimeType();
+      if (!mimeType) {
+        console.error('No supported mime type found for this browser');
+        return;
+      }
+
+      mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
+        mimeType: mimeType,
+        bitsPerSecond: 128000 // Adjust this value as needed
+      });
+
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0 && socketRef.current) {
+          socketRef.current.emit('audioStream', event.data);
+        }
+      };
+
+      mediaRecorderRef.current.start(100);
+      console.log('Broadcasting started with mime type:', mimeType);
+    }
+  }, [getSupportedMimeType]);
+
+  const stopBroadcasting = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    console.log('Broadcasting stopped');
+  }, []);
 
   useEffect(() => {
     socketRef.current = io('https://api.raydeeo.com');
@@ -103,8 +172,6 @@ const TellAPhoneApp = () => {
     socketRef.current.on('newBroadcaster', ({ id, username }) => {
       setCurrentBroadcaster({ id, username });
       setHasVoted(false);
-      setVotedType(null);
-      setCurrentBroadcastVotes([]);
     });
 
     socketRef.current.on('noBroadcaster', () => {
@@ -114,22 +181,23 @@ const TellAPhoneApp = () => {
       setUpvotes(0);
       setDownvotes(0);
       setTotalDuration(0);
-      setCurrentBroadcastVotes([]);
     });
 
     socketRef.current.on('startBroadcasting', () => {
       setIsBroadcasting(true);
+      setIsAudioEnabled(false);
       startBroadcasting();
     });
 
     socketRef.current.on('stopBroadcasting', () => {
       setIsBroadcasting(false);
+      setIsAudioEnabled(true);
       stopBroadcasting();
     });
 
     socketRef.current.on('broadcastAudio', (audioChunk) => {
       if (!isBroadcasting) {
-        handleIncomingAudio(audioChunk);
+        appendAudioChunk(audioChunk);
       }
     });
 
@@ -151,6 +219,12 @@ const TellAPhoneApp = () => {
     socketRef.current.on('voteUpdate', ({ username, voteType }) => {
       setCurrentBroadcastVotes(prevVotes => [...prevVotes, { username, voteType }]);
     });
+  
+    socketRef.current.on('newBroadcaster', () => {
+      setCurrentBroadcastVotes([]);
+    });
+
+    setupAudioContext();
 
     return () => {
       if (socketRef.current) {
@@ -159,66 +233,14 @@ const TellAPhoneApp = () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
+      if (audioContext) {
+        audioContext.close();
       }
-      if (audioWorkletNodeRef.current) {
-        audioWorkletNodeRef.current.disconnect();
+      if (audioSource) {
+        audioSource.stop();
       }
     };
-  }, []);
-
-  const handleIncomingAudio = useCallback((audioChunk) => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    }
-
-    if (!audioWorkletNodeRef.current) {
-      setupAudioWorklet();
-    }
-
-    if (audioWorkletNodeRef.current) {
-      const float32Array = new Float32Array(audioChunk);
-      audioWorkletNodeRef.current.port.postMessage(float32Array);
-    }
-  }, []);
-
-  const setupAudioWorklet = async () => {
-    if (!audioContextRef.current) return;
-
-    try {
-      await audioContextRef.current.audioWorklet.addModule('/audio-processor.js');
-      audioWorkletNodeRef.current = new AudioWorkletNode(audioContextRef.current, 'audio-processor');
-      audioWorkletNodeRef.current.connect(audioContextRef.current.destination);
-    } catch (error) {
-      console.error('Error setting up AudioWorklet:', error);
-    }
-  };
-
-  const startBroadcasting = useCallback(() => {
-    if (streamRef.current) {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioContext.createMediaStreamSource(streamRef.current);
-      const processor = audioContext.createScriptProcessor(1024, 1, 1);
-
-      source.connect(processor);
-      processor.connect(audioContext.destination);
-
-      processor.onaudioprocess = (e) => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        if (socketRef.current) {
-          socketRef.current.emit('audioStream', inputData);
-        }
-      };
-    }
-  }, []);
-
-  const stopBroadcasting = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-    }
-    console.log('Broadcasting stopped');
-  }, []);
+  }, [appendAudioChunk, startBroadcasting, stopBroadcasting, isBroadcasting, audioContext, audioSource, setupAudioContext]);
 
   const toggleQueue = useCallback(async () => {
     if (socketRef.current) {
@@ -248,6 +270,14 @@ const TellAPhoneApp = () => {
       setVotedType(voteType);
     }
   }, [hasVoted, currentBroadcaster]);
+
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      alert('Link copied to clipboard!');
+    }).catch(err => {
+      console.error('Failed to copy: ', err);
+    });
+  };
 
   const checkUsername = useCallback((username) => {
     return new Promise((resolve) => {
@@ -316,7 +346,6 @@ const TellAPhoneApp = () => {
       </div>
     </div>
   );
-
   if (showUsernameDialog) {
     return (
       <Dialog open={showUsernameDialog}>
