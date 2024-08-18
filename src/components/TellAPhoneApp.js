@@ -10,16 +10,22 @@ export default function TellAPhoneApp() {
   const [isInQueue, setIsInQueue] = useState(false);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [hasMicPermission, setHasMicPermission] = useState(false);
+  const [remainingTime, setRemainingTime] = useState(10);
 
   const websocket = useRef(null);
   const audioContext = useRef(null);
   const audioStreamRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const timerRef = useRef(null);
 
   useEffect(() => {
     connectWebSocket();
     return () => {
       if (websocket.current) {
         websocket.current.close();
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
       }
     };
   }, []);
@@ -35,7 +41,6 @@ export default function TellAPhoneApp() {
     websocket.current.onclose = () => {
       setIsConnected(false);
       console.log('WebSocket disconnected');
-      // Attempt to reconnect after 5 seconds
       setTimeout(connectWebSocket, 5000);
     };
 
@@ -58,6 +63,7 @@ export default function TellAPhoneApp() {
           break;
         case 'newBroadcaster':
           setCurrentBroadcaster(data.username);
+          setRemainingTime(10);
           if (data.username === username) {
             setIsBroadcasting(true);
             startBroadcasting();
@@ -70,6 +76,9 @@ export default function TellAPhoneApp() {
           break;
         case 'audio':
           playAudio(data.data);
+          break;
+        case 'voteReceived':
+          setRemainingTime(prev => data.vote === 'up' ? prev + 1 : prev - 1);
           break;
       }
     };
@@ -105,7 +114,7 @@ export default function TellAPhoneApp() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setHasMicPermission(true);
-      stream.getTracks().forEach(track => track.stop()); // Stop the stream immediately
+      stream.getTracks().forEach(track => track.stop());
     } catch (error) {
       console.error('Error accessing microphone:', error);
       setHasMicPermission(false);
@@ -121,24 +130,26 @@ export default function TellAPhoneApp() {
       try {
         audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
         audioStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const audioSource = audioContext.current.createMediaStreamSource(audioStreamRef.current);
-        const analyser = audioContext.current.createAnalyser();
-        audioSource.connect(analyser);
-
-        const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-
-        const sendAudioData = () => {
-          analyser.getByteFrequencyData(dataArray);
-          if (websocket.current && websocket.current.readyState === WebSocket.OPEN) {
-            websocket.current.send(JSON.stringify({ type: 'audio', data: Array.from(dataArray) }));
-          }
-          if (isBroadcasting) {
-            requestAnimationFrame(sendAudioData);
+        
+        mediaRecorderRef.current = new MediaRecorder(audioStreamRef.current);
+        
+        mediaRecorderRef.current.ondataavailable = (event) => {
+          if (event.data.size > 0 && websocket.current && websocket.current.readyState === WebSocket.OPEN) {
+            websocket.current.send(JSON.stringify({ type: 'audio', data: event.data }));
           }
         };
-
-        sendAudioData();
+        
+        mediaRecorderRef.current.start(100); // Send audio data every 100ms
+        
+        timerRef.current = setInterval(() => {
+          setRemainingTime(prev => {
+            if (prev <= 1) {
+              clearInterval(timerRef.current);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
       } catch (error) {
         console.error('Error starting broadcast:', error);
       }
@@ -146,26 +157,30 @@ export default function TellAPhoneApp() {
   };
 
   const stopBroadcasting = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+    }
     if (audioStreamRef.current) {
       audioStreamRef.current.getTracks().forEach(track => track.stop());
     }
     if (audioContext.current) {
       audioContext.current.close();
     }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
   };
 
-  const playAudio = (audioData) => {
+  const playAudio = async (audioData) => {
     if (!audioContext.current) {
       audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
     }
-    const buffer = audioContext.current.createBuffer(1, audioData.length, audioContext.current.sampleRate);
-    const channelData = buffer.getChannelData(0);
-    audioData.forEach((sample, i) => {
-      channelData[i] = sample / 255;
-    });
-
+    
+    const arrayBuffer = await audioData.arrayBuffer();
+    const audioBuffer = await audioContext.current.decodeAudioData(arrayBuffer);
+    
     const source = audioContext.current.createBufferSource();
-    source.buffer = buffer;
+    source.buffer = audioBuffer;
     source.connect(audioContext.current.destination);
     source.start();
   };
@@ -181,7 +196,9 @@ export default function TellAPhoneApp() {
           <p>Your username: {username}</p>
           <p>Listeners: {listenerCount}</p>
           <p>Queue: {queueCount}</p>
-          {currentBroadcaster && <p>Current broadcaster: {currentBroadcaster}</p>}
+          {currentBroadcaster && (
+            <p>Current broadcaster: {currentBroadcaster} (Time remaining: {remainingTime}s)</p>
+          )}
           {!hasMicPermission && (
             <button onClick={requestMicPermission}>Allow Microphone Access</button>
           )}
