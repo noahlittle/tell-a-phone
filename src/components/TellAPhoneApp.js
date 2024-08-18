@@ -93,15 +93,17 @@ const TellAPhoneApp = () => {
   const startBroadcasting = useCallback(async () => {
     try {
       console.log('Starting broadcast...');
-      streamRef.current = await navigator.mediaDevices.getUserMedia({ 
-        audio: { 
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: SAMPLE_RATE,
-          channelCount: 1
-        } 
-      });
+      if (!streamRef.current) {
+        streamRef.current = await navigator.mediaDevices.getUserMedia({ 
+          audio: { 
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: SAMPLE_RATE,
+            channelCount: 1
+          } 
+        });
+      }
       console.log('Got user media stream:', streamRef.current);
       const mimeType = 'audio/webm;codecs=opus';
       mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
@@ -111,7 +113,7 @@ const TellAPhoneApp = () => {
   
       mediaRecorderRef.current.ondataavailable = (event) => {
         console.log('Data available from MediaRecorder, size:', event.data.size);
-        if (event.data.size > 0 && socketRef.current) {
+        if (event.data.size > 0 && socketRef.current && socketRef.current.connected) {
           console.log('Preparing to emit audio stream data');
           try {
             socketRef.current.emit('audioStream', event.data, mimeType);
@@ -145,19 +147,27 @@ const TellAPhoneApp = () => {
   useEffect(() => {
     socketRef.current = io('https://api.raydeeo.com:3001', {
       withCredentials: true,
-      transports: ['websocket']
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     });
   
     socketRef.current.on('connect', () => {
       console.log('Connected to server with ID:', socketRef.current.id);
       setIsConnected(true);
+      if (isBroadcasting) {
+        console.log('Reconnected while broadcasting, rejoining as broadcaster');
+        socketRef.current.emit('rejoinAsBroadcaster', currentBroadcaster);
+      }
     });
   
     socketRef.current.on('disconnect', (reason) => {
       console.log('Socket disconnected. Reason:', reason);
-      console.log('Current broadcasting state:', isBroadcasting);
-      console.log('Current MediaRecorder state:', mediaRecorderRef.current ? mediaRecorderRef.current.state : 'No MediaRecorder');
+      setIsConnected(false);
+      // Don't stop broadcasting on disconnect, allow for reconnection
     });
+  
   
     socketRef.current.on('error', (error) => {
       console.error('Socket error:', error);
@@ -253,7 +263,7 @@ const TellAPhoneApp = () => {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
     };
-  }, [startBroadcasting, stopBroadcasting, isBroadcasting, isAudioEnabled]);
+  }, [isBroadcasting, currentBroadcaster, startBroadcasting]);
 
   const toggleQueue = useCallback(async () => {
     if (socketRef.current) {
