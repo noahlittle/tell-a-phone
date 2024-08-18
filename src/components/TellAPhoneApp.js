@@ -80,7 +80,6 @@ const TellAPhoneApp = () => {
   const [voteStatus, setVoteStatus] = useState(null); // 'upvote', 'downvote', or null
   const [votedType, setVotedType] = useState(null);
   const [currentBroadcastVotes, setCurrentBroadcastVotes] = useState([]);
-  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
 
   const socketRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -114,47 +113,31 @@ const TellAPhoneApp = () => {
     }
   }, []);
 
-
-  const waitForSourceOpen = () => {
-    return new Promise((resolve) => {
-      if (mediaSourceRef.current.readyState === 'open') {
-        resolve();
-      } else {
-        mediaSourceRef.current.addEventListener('sourceopen', resolve, { once: true });
-      }
-    });
-  };
-
-  const resetMediaSource = useCallback(() => {
-    if (mediaSourceRef.current && mediaSourceRef.current.readyState === 'open') {
-      mediaSourceRef.current.endOfStream();
-    }
-    setupMediaSource();
-  }, [setupMediaSource]);
-  
-  const appendAudioChunk = useCallback(async (audioChunk, mimeType) => {
+  const appendAudioChunk = useCallback((audioChunk, mimeType) => {
     console.log('Received audio chunk, MIME type:', mimeType);
     if (!mediaSourceRef.current) {
       console.error('MediaSource not initialized');
       return;
     }
-  
-    await waitForSourceOpen();
-  
-    try {
-      if (!sourceBufferRef.current) {
-        sourceBufferRef.current = mediaSourceRef.current.addSourceBuffer(mimeType);
-        console.log('SourceBuffer created for MIME type:', mimeType);
+
+    if (mediaSourceRef.current.readyState === 'open') {
+      try {
+        if (!sourceBufferRef.current) {
+          sourceBufferRef.current = mediaSourceRef.current.addSourceBuffer(mimeType);
+          console.log('SourceBuffer created for MIME type:', mimeType);
+        }
+        if (sourceBufferRef.current && !sourceBufferRef.current.updating) {
+          const arrayBuffer = new Uint8Array(audioChunk).buffer;
+          sourceBufferRef.current.appendBuffer(arrayBuffer);
+          console.log('Audio chunk appended, size:', arrayBuffer.byteLength);
+        }
+      } catch (error) {
+        console.error('Error appending audio chunk:', error);
       }
-      if (sourceBufferRef.current && !sourceBufferRef.current.updating) {
-        const arrayBuffer = new Uint8Array(audioChunk).buffer;
-        sourceBufferRef.current.appendBuffer(arrayBuffer);
-        console.log('Audio chunk appended, size:', arrayBuffer.byteLength);
-      }
-    } catch (error) {
-      console.error('Error appending audio chunk:', error);
+    } else {
+      console.log('MediaSource not open. Current state:', mediaSourceRef.current.readyState);
     }
-  }, [isAudioEnabled]);
+  }, []);
 
   useEffect(() => {
     socketRef.current = io('https://api.raydeeo.com');
@@ -171,7 +154,7 @@ const TellAPhoneApp = () => {
     socketRef.current.on('newBroadcaster', ({ id, username }) => {
       setCurrentBroadcaster({ id, username });
       setHasVoted(false);
-      resetMediaSource();
+      setupMediaSource();
     });
 
     socketRef.current.on('noBroadcaster', () => {
@@ -186,15 +169,12 @@ const TellAPhoneApp = () => {
 
     socketRef.current.on('startBroadcasting', () => {
       setIsBroadcasting(true);
-      setIsAudioEnabled(false); // Disable audio when starting to broadcast
       startBroadcasting();
     });
 
     socketRef.current.on('stopBroadcasting', () => {
       setIsBroadcasting(false);
-      setIsAudioEnabled(true); // Re-enable audio when stopping broadcast
       stopBroadcasting();
-      resetMediaSource(); // Reset the media source to prepare for listening
     });
 
     socketRef.current.on('broadcastAudio', (audioChunk, mimeType) => {
