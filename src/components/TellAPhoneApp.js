@@ -245,7 +245,7 @@ const TellAPhoneApp = () => {
   }, [username, usernameError]);
 
   useEffect(() => {
-    socketRef.current = io('https://api.raydeeo.com', {
+    socketRef.current = io('http://api.raydeeo.com', {
       withCredentials: true,
       transports: ['websocket', 'polling']
     });
