@@ -77,9 +77,10 @@ const TellAPhoneApp = () => {
   const [upvotes, setUpvotes] = useState(0);
   const [downvotes, setDownvotes] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
-  const [voteStatus, setVoteStatus] = useState(null); // 'upvote', 'downvote', or null
+  const [voteStatus, setVoteStatus] = useState(null);
   const [votedType, setVotedType] = useState(null);
   const [currentBroadcastVotes, setCurrentBroadcastVotes] = useState([]);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
 
   const socketRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -88,7 +89,6 @@ const TellAPhoneApp = () => {
   const sourceBufferRef = useRef(null);
   const streamRef = useRef(null);
 
-
   const getSupportedMimeType = useCallback(() => {
     const possibleTypes = [
       'audio/webm;codecs=opus',
@@ -96,7 +96,9 @@ const TellAPhoneApp = () => {
       'audio/ogg;codecs=opus',
       'audio/mp4;codecs=opus'
     ];
-    return possibleTypes.find(mimeType => MediaRecorder.isTypeSupported(mimeType)) || '';
+    const supportedType = possibleTypes.find(mimeType => MediaRecorder.isTypeSupported(mimeType)) || '';
+    console.log('Supported MIME type:', supportedType);
+    return supportedType;
   }, []);
 
   const setupMediaSource = useCallback(() => {
@@ -106,12 +108,32 @@ const TellAPhoneApp = () => {
 
       mediaSourceRef.current.addEventListener('sourceopen', () => {
         console.log('MediaSource opened');
-        sourceBufferRef.current = null; // Reset sourceBuffer on new MediaSource
+        const mimeType = getSupportedMimeType();
+        if (!sourceBufferRef.current && mimeType) {
+          try {
+            sourceBufferRef.current = mediaSourceRef.current.addSourceBuffer(mimeType);
+            console.log('SourceBuffer created for MIME type:', mimeType);
+          } catch (error) {
+            console.error('Error creating SourceBuffer:', error);
+          }
+        }
       });
 
-      audioRef.current.play().catch(e => console.error('Error playing audio:', e));
+      mediaSourceRef.current.addEventListener('sourceended', () => {
+        console.log('MediaSource ended');
+      });
+
+      mediaSourceRef.current.addEventListener('sourceclose', () => {
+        console.log('MediaSource closed');
+      });
+
+      audioRef.current.play().catch(e => {
+        console.error('Error playing audio:', e);
+        console.log('Audio element readyState:', audioRef.current.readyState);
+        console.log('Audio element error:', audioRef.current.error);
+      });
     }
-  }, []);
+  }, [getSupportedMimeType]);
 
   const appendAudioChunk = useCallback((audioChunk, mimeType) => {
     console.log('Received audio chunk, MIME type:', mimeType);
@@ -120,23 +142,32 @@ const TellAPhoneApp = () => {
       return;
     }
 
-    if (mediaSourceRef.current.readyState === 'open') {
-      try {
-        if (!sourceBufferRef.current) {
-          sourceBufferRef.current = mediaSourceRef.current.addSourceBuffer(mimeType);
-          console.log('SourceBuffer created for MIME type:', mimeType);
+    console.log('MediaSource readyState:', mediaSourceRef.current.readyState);
+
+    const appendChunk = () => {
+      if (mediaSourceRef.current.readyState === 'open') {
+        try {
+          if (!sourceBufferRef.current) {
+            sourceBufferRef.current = mediaSourceRef.current.addSourceBuffer(mimeType);
+            console.log('SourceBuffer created for MIME type:', mimeType);
+          }
+          if (sourceBufferRef.current && !sourceBufferRef.current.updating) {
+            const arrayBuffer = new Uint8Array(audioChunk).buffer;
+            sourceBufferRef.current.appendBuffer(arrayBuffer);
+            console.log('Audio chunk appended, size:', arrayBuffer.byteLength);
+          } else {
+            console.log('SourceBuffer not ready for appending');
+          }
+        } catch (error) {
+          console.error('Error appending audio chunk:', error);
         }
-        if (sourceBufferRef.current && !sourceBufferRef.current.updating) {
-          const arrayBuffer = new Uint8Array(audioChunk).buffer;
-          sourceBufferRef.current.appendBuffer(arrayBuffer);
-          console.log('Audio chunk appended, size:', arrayBuffer.byteLength);
-        }
-      } catch (error) {
-        console.error('Error appending audio chunk:', error);
+      } else {
+        console.log('MediaSource not open. Current state:', mediaSourceRef.current.readyState);
+        setTimeout(appendChunk, 100); // Retry after 100ms
       }
-    } else {
-      console.log('MediaSource not open. Current state:', mediaSourceRef.current.readyState);
-    }
+    };
+
+    appendChunk();
   }, []);
 
   useEffect(() => {
@@ -203,7 +234,7 @@ const TellAPhoneApp = () => {
     });
   
     socketRef.current.on('newBroadcaster', () => {
-      setCurrentBroadcastVotes([]); // Reset votes for new broadcast
+      setCurrentBroadcastVotes([]);
     });
 
     return () => {
@@ -326,6 +357,15 @@ const TellAPhoneApp = () => {
     }
   }, [username, usernameError]);
 
+  const startAudio = () => {
+    audioRef.current.play().catch(e => {
+      console.error('Error playing audio:', e);
+      console.log('Audio element readyState:', audioRef.current.readyState);
+      console.log('Audio element error:', audioRef.current.error);
+    });
+    setIsAudioPlaying(true);
+  };
+
   const SoundWaveAnimation = () => (
     <div className="ml-2 flex space-x-1">
       <div className="w-1 h-4 bg-blue-400 rounded-full animate-soundwave"></div>
@@ -333,8 +373,6 @@ const TellAPhoneApp = () => {
       <div className="w-1 h-4 bg-blue-400 rounded-full animate-soundwave animation-delay-400"></div>
     </div>
   );
-
-
 
   const BroadcasterVoteDisplay = () => (
     <div className="fixed right-4 bottom-1 transform -translate-y-1/2 w-48 bg-gray-800 p-4 rounded-md shadow-lg">
@@ -425,14 +463,14 @@ const TellAPhoneApp = () => {
 
   return (
     <>
-    <div className="w-full bg-blue-600 text-white p-2 text-center text-sm">
+      <div className="w-full bg-blue-600 text-white p-2 text-center text-sm">
         Want to start journaling consistently? Try Reverie, a journal that calls you every day. 
         <a href="https://callreverie.com" target="_blank" rel="noopener noreferrer" className="underline ml-1">Learn More</a>
       </div>
-    <div className="flex items-center justify-center min-h-screen bg-gray-900 p-4">
-      <Card className="w-full max-w-md bg-gray-800 text-gray-100 shadow-lg">
-        <CardHeader className="space-y-1 border-b border-gray-700 pb-4">
-        <div className='flex items-center'>
+      <div className="flex items-center justify-center min-h-screen bg-gray-900 p-4">
+        <Card className="w-full max-w-md bg-gray-800 text-gray-100 shadow-lg">
+          <CardHeader className="space-y-1 border-b border-gray-700 pb-4">
+            <div className='flex items-center'>
               {isConnected ? (
                 <Badge variant="secondary" className="mr-2 bg-green-500 text-white w-min mb-2 flex items-center">
                   Connected
@@ -448,141 +486,144 @@ const TellAPhoneApp = () => {
                 <Users className="w-5 h-5 mr-2 text-white" />{listenerCount} Listeners
               </Badge>
             </div>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-2xl font-bold text-white">Raydeeo</CardTitle>
-            <Radio className="w-6 h-6 text-blue-400" />
-          </div>
-          <CardDescription className="text-gray-400">The crowdsourced radio station</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 pt-4">
-          <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-gray-300">Current Broadcaster:</span>
-              {currentBroadcaster ? (
-                <Badge variant="secondary" className="bg-blue-500 text-white">{currentBroadcaster.username}</Badge>
-              ) : (
-                <Badge variant="outline" className="text-gray-400 border-gray-600">None</Badge>
+              <CardTitle className="text-2xl font-bold text-white">Raydeeo</CardTitle>
+              <Radio className="w-6 h-6 text-blue-400" />
+            </div>
+            <CardDescription className="text-gray-400">The crowdsourced radio station</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-gray-300">Current Broadcaster:</span>
+                {currentBroadcaster ? (
+                  <Badge variant="secondary" className="bg-blue-500 text-white">{currentBroadcaster.username}</Badge>
+                ) : (
+                  <Badge variant="outline" className="text-gray-400 border-gray-600">None</Badge>
+                )}
+              </div>
+              {currentBroadcaster && (
+                <div className='flex w-full'>
+                  <div className={`space-y-1 p-2  w-full rounded-md ${isBroadcasting ? 'bg-red-500 animate-pulse' : 'bg-gray-700'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <span className={`font-bold ${isBroadcasting ? 'text-white' : 'text-gray-300'}`}>
+                          {isBroadcasting ? 'LIVE' : 'Listening...'}
+                        </span>
+                        {!isBroadcasting && <SoundWaveAnimation />}
+                      </div>
+                      <div className="flex items-center">
+                        <Clock className={`w-4 h-4 mr-2 ${isBroadcasting ? 'text-white' : 'text-gray-300'}`} />
+                        <span className={isBroadcasting ? 'text-white' : 'text-gray-300'}>
+                          {(timeLeft / 1000).toFixed(1)}s
+                        </span>
+                      </div>
+                    </div>
+                    <Progress value={(1 - timeLeft / totalTime) * 100} className="w-full" />
+                    <div className="flex justify-between items-center text-sm">
+                      <div className="flex items-center space-x-2">
+                        <ThumbsUp className="w-4 h-4 text-green-400" />
+                        <span>{upvotes}</span>
+                        <ThumbsDown className="w-4 h-4 text-red-400" />
+                        <span>{downvotes}</span>
+                      </div>
+                      <span>Total: {(totalDuration / 1000).toFixed(1)}s</span>
+                    </div>
+                  </div>
+                  <div className='mt-1'>
+                    {!isBroadcasting && currentBroadcaster && (
+                      <div className="flex flex-col items-end space-y-1 ml-2">
+                        <VoteButton
+                          type="upvote"
+                          onClick={() => handleVote('upvote')}
+                          disabled={hasVoted || isBroadcasting}
+                          voted={votedType === 'upvote'}
+                        />
+                        <VoteButton
+                          type="downvote"
+                          onClick={() => handleVote('downvote')}
+                          disabled={hasVoted || isBroadcasting}
+                          voted={votedType === 'downvote'}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
-            {currentBroadcaster && (
-              <div className='flex w-full'>
-              <div className={`space-y-1 p-2  w-full rounded-md ${isBroadcasting ? 'bg-red-500 animate-pulse' : 'bg-gray-700'}`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <span className={`font-bold ${isBroadcasting ? 'text-white' : 'text-gray-300'}`}>
-                      {isBroadcasting ? 'LIVE' : 'Listening...'}
-                    </span>
-                    {!isBroadcasting && <SoundWaveAnimation />}
-                  </div>
-                  <div className="flex items-center">
-                    <Clock className={`w-4 h-4 mr-2 ${isBroadcasting ? 'text-white' : 'text-gray-300'}`} />
-                    <span className={isBroadcasting ? 'text-white' : 'text-gray-300'}>
-                      {(timeLeft / 1000).toFixed(1)}s
-                    </span>
-                  </div>
-                </div>
-                <Progress value={(1 - timeLeft / totalTime) * 100} className="w-full" />
-                <div className="flex justify-between items-center text-sm">
-                  <div className="flex items-center space-x-2">
-                    <ThumbsUp className="w-4 h-4 text-green-400" />
-                    <span>{upvotes}</span>
-                    <ThumbsDown className="w-4 h-4 text-red-400" />
-                    <span>{downvotes}</span>
-                  </div>
-                  <span>Total: {(totalDuration / 1000).toFixed(1)}s</span>
-                </div>
-                
+
+            <div className="flex items-center justify-between text-gray-300">
+              <div className="flex items-center">
+                <Users className="w-5 h-5 mr-2 text-blue-400" />
+                <span>Queue: {queueLength}</span>
               </div>
-              <div className='mt-1'>
-              {!isBroadcasting && currentBroadcaster && (
-    <div className="flex flex-col items-end space-y-1 ml-2">
-    <VoteButton
-      type="upvote"
-      onClick={() => handleVote('upvote')}
-      disabled={hasVoted || isBroadcasting}
-      voted={votedType === 'upvote'}
-    />
-    <VoteButton
-      type="downvote"
-      onClick={() => handleVote('downvote')}
-      disabled={hasVoted || isBroadcasting}
-      voted={votedType === 'downvote'}
-    />
-  </div>
-            )}
-                </div>
-                </div>
-
-            )}
-          </div>
-
-          <div className="flex items-center justify-between text-gray-300">
-            <div className="flex items-center">
-              <Users className="w-5 h-5 mr-2 text-blue-400" />
-              <span>Queue: {queueLength}</span>
+              {isInQueue ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={toggleQueue}
+                        className="bg-yellow-500 text-gray-900 hover:bg-yellow-600"
+                      >
+                        Position: {queuePosition}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Click to leave queue</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={toggleQueue}
+                  className="bg-blue-500 hover:bg-blue-600 text-white"
+                >
+                  <Radio className='mr-2' /> 
+                  {queueLength === 0 && !currentBroadcaster ? ' Go Live!' : ' Join Queue'}
+                </Button>
+              )}
             </div>
-            {isInQueue ? (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={toggleQueue}
-                      className="bg-yellow-500 text-gray-900 hover:bg-yellow-600"
-                    >
-                      Position: {queuePosition}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Click to leave queue</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={toggleQueue}
-                className="bg-blue-500 hover:bg-blue-600 text-white"
-              >
-                <Radio className='mr-2' /> 
-                {queueLength === 0 && !currentBroadcaster ? ' Go Live!' : ' Join Queue'}
+          </CardContent>
+          <CardFooter className="flex flex-col border-t border-gray-700 pt-4 space-y-2">
+            <Button 
+              variant={isBroadcasting ? "destructive" : "default"} 
+              className="w-full"
+              disabled={isBroadcasting}
+            >
+              {isBroadcasting ? (
+                <>
+                  <Mic className="mr-2" />
+                  <span>You're Broadcasting!</span>
+                </>
+              ) : isInQueue && queuePosition === 1 && currentBroadcaster ? (
+                <>
+                  <Clock className="mr-2" />
+                  <span>You're live in {Math.ceil(timeLeft / 1000)}s</span>
+                </>
+              ) : (
+                <>
+                  <MicOff className="mr-2" />
+                  <span className="text-sm">You're Muted</span>
+                </>
+              )}
+            </Button>
+            {!isAudioPlaying && (
+              <Button onClick={startAudio} className="w-full mt-2">
+                <Play className="mr-2" />
+                Start Audio
               </Button>
             )}
-          </div>
-            </CardContent>
-            <CardFooter className="flex flex-col border-t border-gray-700 pt-4 space-y-2">
-          <Button 
-            variant={isBroadcasting ? "destructive" : "default"} 
-            className="w-full"
-            disabled={isBroadcasting}
-          >
-            {isBroadcasting ? (
-              <>
-                <Mic className="mr-2" />
-                <span>You&apos;re Broadcasting!</span>
-              </>
-            ) : isInQueue && queuePosition === 1 && currentBroadcaster ? (
-              <>
-                <Clock className="mr-2" />
-                <span>You&apos;re live in {Math.ceil(timeLeft / 1000)}s</span>
-              </>
-            ) : (
-              <>
-                <MicOff className="mr-2" />
-                <span className="text-sm">You&apos;re Muted</span>
-              </>
-            )}
-          </Button>
-        </CardFooter>
-        <div className='h-100'>
-        </div>
-          </Card>
-          {isBroadcasting && <BroadcasterVoteDisplay />}
-        </div>
-      </>
-      );
-    };
-    
-    export default TellAPhoneApp;
+          </CardFooter>
+        </Card>
+        {isBroadcasting && <BroadcasterVoteDisplay />}
+      </div>
+      <audio ref={audioRef} autoPlay />
+    </>
+  );
+};
+
+export default TellAPhoneApp;
