@@ -92,6 +92,7 @@ const TellAPhoneApp = () => {
 
   const startBroadcasting = useCallback(async () => {
     try {
+      console.log('Starting broadcast...');
       streamRef.current = await navigator.mediaDevices.getUserMedia({ 
         audio: { 
           echoCancellation: true,
@@ -101,17 +102,21 @@ const TellAPhoneApp = () => {
           channelCount: 1
         } 
       });
+      console.log('Got user media stream:', streamRef.current);
       const mimeType = 'audio/webm;codecs=opus';
       mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
         mimeType: mimeType
       });
-
+      console.log('Created MediaRecorder:', mediaRecorderRef.current);
+  
       mediaRecorderRef.current.ondataavailable = (event) => {
+        console.log('Data available from MediaRecorder, size:', event.data.size);
         if (event.data.size > 0 && socketRef.current) {
+          console.log('Emitting audio stream data');
           socketRef.current.emit('audioStream', event.data, mimeType);
         }
       };
-
+  
       mediaRecorderRef.current.start(100);
       setIsBroadcasting(true);
       console.log('Broadcasting started with mime type:', mimeType);
@@ -172,10 +177,12 @@ const TellAPhoneApp = () => {
     });
 
     socketRef.current.on('startBroadcasting', () => {
+      console.log('Received startBroadcasting event');
       setIsBroadcasting(true);
       setIsAudioEnabled(false);
       startBroadcasting();
     });
+    
 
     socketRef.current.on('stopBroadcasting', () => {
       setIsBroadcasting(false);
@@ -193,6 +200,7 @@ const TellAPhoneApp = () => {
     });
 
     socketRef.current.on('timeUpdate', ({ timeLeft, totalTime }) => {
+      console.log('Received timeUpdate:', { timeLeft, totalTime });
       setTimeLeft(timeLeft);
       setTotalTime(totalTime);
     });
