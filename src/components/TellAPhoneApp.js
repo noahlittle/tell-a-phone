@@ -201,8 +201,14 @@ const TellAPhoneApp = () => {
 
     socketRef.current.on('timeUpdate', ({ timeLeft, totalTime }) => {
       console.log('Received timeUpdate:', { timeLeft, totalTime });
-      setTimeLeft(timeLeft);
-      setTotalTime(totalTime);
+      setTimeLeft(prevTime => {
+        console.log('Updating timeLeft:', prevTime, '->', timeLeft);
+        return timeLeft;
+      });
+      setTotalTime(prevTotal => {
+        console.log('Updating totalTime:', prevTotal, '->', totalTime);
+        return totalTime;
+      });
     });
 
     socketRef.current.on('listenerCountUpdate', ({ count }) => {
@@ -222,6 +228,8 @@ const TellAPhoneApp = () => {
     socketRef.current.on('newBroadcaster', () => {
       setCurrentBroadcastVotes([]);
     });
+
+
 
     return () => {
       if (socketRef.current) {
@@ -245,6 +253,7 @@ const TellAPhoneApp = () => {
         try {
           streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
           socketRef.current.emit('joinQueue');
+          console.log('Emitted joinQueue event');
           setIsInQueue(true);
         } catch (error) {
           console.error('Error accessing microphone:', error);
@@ -253,6 +262,15 @@ const TellAPhoneApp = () => {
       }
     }
   }, [isInQueue]);
+
+  useEffect(() => {
+    console.log('timeLeft changed:', timeLeft);
+  }, [timeLeft]);
+  
+  // Add a useEffect to log totalTime changes:
+  useEffect(() => {
+    console.log('totalTime changed:', totalTime);
+  }, [totalTime]);
 
   const handleVote = useCallback((voteType) => {
     if (!hasVoted && currentBroadcaster && currentBroadcaster.id !== socketRef.current.id) {
@@ -456,8 +474,9 @@ const TellAPhoneApp = () => {
                       <div className="flex items-center">
                         <Clock className={`w-4 h-4 mr-2 ${isBroadcasting ? 'text-white' : 'text-gray-300'}`} />
                         <span className={isBroadcasting ? 'text-white' : 'text-gray-300'}>
-                          {(timeLeft / 1000).toFixed(1)}s
-                        </span>
+  {timeLeft > 0 ? (timeLeft / 1000).toFixed(1) : '0.0'}s
+</span>
+
                       </div>
                     </div>
                     <Progress value={(1 - timeLeft / totalTime) * 100} className="w-full" />
