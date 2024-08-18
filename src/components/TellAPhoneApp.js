@@ -4,10 +4,11 @@ import io from 'socket.io-client';
 
 const AudioBroadcaster = () => {
   const [isBroadcasting, setIsBroadcasting] = useState(false);
-  const [isAudioContextInitialized, setIsAudioContextInitialized] = useState(false);
   const socketRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
   const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const scriptProcessorRef = useRef(null);
+  const streamRef = useRef(null);
 
   useEffect(() => {
     socketRef.current = io('https://api.raydeeo.com:3001', {
@@ -24,43 +25,39 @@ const AudioBroadcaster = () => {
     });
 
     socketRef.current.on('audio', (audioData) => {
-      if (isAudioContextInitialized) {
-        playAudio(audioData);
-      }
+      playAudio(audioData);
     });
 
     return () => {
       if (socketRef.current) {
         socketRef.current.disconnect();
       }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
     };
-  }, [isAudioContextInitialized]);
+  }, []);
 
-  const initializeAudioContext = () => {
+  const initAudio = () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      setIsAudioContextInitialized(true);
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      scriptProcessorRef.current = audioContextRef.current.createScriptProcessor(1024, 1, 1);
     }
   };
 
   const startBroadcasting = async () => {
     try {
-      initializeAudioContext();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0 && socketRef.current) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64data = reader.result;
-            socketRef.current.emit('audio', base64data);
-          };
-          reader.readAsDataURL(event.data);
-        }
+      initAudio();
+      streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
+      source.connect(analyserRef.current);
+      analyserRef.current.connect(scriptProcessorRef.current);
+      scriptProcessorRef.current.connect(audioContextRef.current.destination);
+      scriptProcessorRef.current.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        socketRef.current.emit('audio', Array.from(inputData));
       };
-
-      mediaRecorderRef.current.start(100);
       setIsBroadcasting(true);
     } catch (error) {
       console.error('Error starting broadcast:', error);
@@ -68,44 +65,34 @@ const AudioBroadcaster = () => {
   };
 
   const stopBroadcasting = () => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+    }
+    if (scriptProcessorRef.current) {
+      scriptProcessorRef.current.disconnect();
+    }
+    if (analyserRef.current) {
+      analyserRef.current.disconnect();
     }
     setIsBroadcasting(false);
   };
 
-  const playAudio = async (audioData) => {
-    const audioContext = audioContextRef.current;
-
-    try {
-      // Remove the data URL prefix to get the raw base64 data
-      const base64Data = audioData.split(',')[1];
-      const audioBuffer = await decodeAudioData(audioContext, base64Data);
-      
-      const source = audioContext.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContext.destination);
-      source.start();
-    } catch (error) {
-      console.error('Error playing audio:', error);
+  const playAudio = (audioData) => {
+    if (!audioContextRef.current) {
+      initAudio();
     }
-  };
-
-  const decodeAudioData = (audioContext, base64Data) => {
-    return new Promise((resolve, reject) => {
-      const binaryString = window.atob(base64Data);
-      const len = binaryString.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      audioContext.decodeAudioData(bytes.buffer, resolve, reject);
-    });
+    const buffer = audioContextRef.current.createBuffer(1, audioData.length, audioContextRef.current.sampleRate);
+    const channelData = buffer.getChannelData(0);
+    for (let i = 0; i < audioData.length; i++) {
+      channelData[i] = audioData[i];
+    }
+    const source = audioContextRef.current.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioContextRef.current.destination);
+    source.start();
   };
 
   const handleButtonClick = () => {
-    initializeAudioContext();
     if (isBroadcasting) {
       stopBroadcasting();
     } else {
