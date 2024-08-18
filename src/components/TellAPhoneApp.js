@@ -178,7 +178,6 @@ const AudioBroadcaster = () => {
       socketRef.current.emit('requestBroadcast');
     }
   };
-
   return (
     <Card className="w-[350px]">
       <CardHeader>
