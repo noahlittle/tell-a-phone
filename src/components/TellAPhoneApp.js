@@ -88,67 +88,83 @@ const TellAPhoneApp = () => {
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
 
-  const getSupportedMimeType = useCallback(() => {
-    const possibleTypes = [
-      'audio/webm;codecs=opus',
-      'audio/webm',
-      'audio/ogg;codecs=opus',
-      'audio/mp4;codecs=opus'
-    ];
-    return possibleTypes.find(mimeType => MediaRecorder.isTypeSupported(mimeType)) || '';
-  }, []);
+// Add this function to handle audio format support
+const getSupportedMimeType = useCallback(() => {
+  const possibleTypes = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/mp4;codecs=opus'
+  ];
+  return possibleTypes.find(mimeType => MediaRecorder.isTypeSupported(mimeType)) || '';
+}, []);
 
-  const setupAudioContext = useCallback(() => {
-    if (!audioContext) {
-      const newAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-      setAudioContext(newAudioContext);
-    }
-  }, [audioContext]);
+const setupAudioContext = useCallback(() => {
+  if (!audioContext) {
+    const newAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    setAudioContext(newAudioContext);
+    
+    // Resume the AudioContext after user interaction
+    const resumeAudioContext = () => {
+      if (newAudioContext.state === 'suspended') {
+        newAudioContext.resume();
+      }
+      document.removeEventListener('click', resumeAudioContext);
+    };
+    document.addEventListener('click', resumeAudioContext);
+  }
+}, [audioContext]);
 
-  const appendAudioChunk = useCallback(async (audioChunk) => {
-    if (!audioContext || !isAudioEnabled) {
-      console.log('AudioContext not initialized or audio disabled');
+// Modified appendAudioChunk function
+const appendAudioChunk = useCallback(async (audioChunk) => {
+  if (!audioContext || !isAudioEnabled) {
+    console.log('AudioContext not initialized or audio disabled');
+    return;
+  }
+
+  try {
+    const arrayBuffer = await audioChunk.arrayBuffer();
+    audioContext.decodeAudioData(arrayBuffer, 
+      (audioBuffer) => {
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+        source.start();
+        setAudioSource(source);
+      },
+      (error) => {
+        console.error('Error decoding audio data:', error);
+      }
+    );
+  } catch (error) {
+    console.error('Error processing audio chunk:', error);
+  }
+}, [audioContext, isAudioEnabled]);
+
+// Modify the startBroadcasting function
+const startBroadcasting = useCallback(() => {
+  if (streamRef.current) {
+    const mimeType = getSupportedMimeType();
+    if (!mimeType) {
+      console.error('No supported mime type found for this browser');
       return;
     }
 
-    try {
-      const arrayBuffer = await audioChunk.arrayBuffer();
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      
-      const source = audioContext.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContext.destination);
-      source.start();
+    mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
+      mimeType: mimeType,
+      bitsPerSecond: 128000 // Adjust this value as needed
+    });
 
-      setAudioSource(source);
-    } catch (error) {
-      console.error('Error processing audio chunk:', error);
-    }
-  }, [audioContext, isAudioEnabled]);
-
-  const startBroadcasting = useCallback(() => {
-    if (streamRef.current) {
-      const mimeType = getSupportedMimeType();
-      if (!mimeType) {
-        console.error('No supported mime type found for this browser');
-        return;
+    mediaRecorderRef.current.ondataavailable = (event) => {
+      if (event.data.size > 0 && socketRef.current) {
+        socketRef.current.emit('audioStream', event.data);
       }
+    };
 
-      mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
-        mimeType: mimeType,
-        bitsPerSecond: 128000 // Adjust this value as needed
-      });
-
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0 && socketRef.current) {
-          socketRef.current.emit('audioStream', event.data);
-        }
-      };
-
-      mediaRecorderRef.current.start(100);
-      console.log('Broadcasting started with mime type:', mimeType);
-    }
-  }, [getSupportedMimeType]);
+    mediaRecorderRef.current.start(100); // Reduce chunk size for more frequent updates
+    console.log('Broadcasting started with mime type:', mimeType);
+  }
+}, [getSupportedMimeType]);
 
   const stopBroadcasting = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
