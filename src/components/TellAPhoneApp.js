@@ -2,20 +2,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 
-const AudioBroadcaster = () => {
+const AudioStreamer = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [message, setMessage] = useState('');
   const socketRef = useRef();
   const audioContextRef = useRef();
   const mediaStreamRef = useRef();
+  const audioBufferSourceRef = useRef();
+  const audioWorkletNodeRef = useRef();
 
   useEffect(() => {
-    socketRef.current = io('https://api.raydeeo.com');
+    socketRef.current = io('http://api.raydeeo.com');
 
     socketRef.current.on('connect', () => {
       setIsConnected(true);
       setMessage('Connected to server');
+      initializeAudioContext();
     });
 
     socketRef.current.on('disconnect', () => {
@@ -23,35 +26,57 @@ const AudioBroadcaster = () => {
       setMessage('Disconnected from server');
     });
 
-    socketRef.current.on('broadcastGranted', () => {
-      setIsBroadcasting(true);
-      setMessage('Broadcasting started');
-      startBroadcasting();
+    socketRef.current.on('currentStream', (stream) => {
+      playAudioStream(stream);
     });
 
-    socketRef.current.on('broadcastDenied', () => {
-      setMessage('Someone else is currently broadcasting');
-    });
-
-    socketRef.current.on('broadcastEnded', () => {
-      setIsBroadcasting(false);
-      setMessage('Broadcast ended');
-      stopBroadcasting();
-    });
-
-    socketRef.current.on('incomingAudio', (audioChunk) => {
-      playAudio(audioChunk);
+    socketRef.current.on('newAudioChunk', (chunk) => {
+      addAudioChunk(chunk);
     });
 
     return () => {
       socketRef.current.disconnect();
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
     };
   }, []);
+
+  const initializeAudioContext = async () => {
+    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    await audioContextRef.current.audioWorklet.addModule('/audio-worklet.js');
+    audioWorkletNodeRef.current = new AudioWorkletNode(audioContextRef.current, 'audio-processor');
+    audioWorkletNodeRef.current.connect(audioContextRef.current.destination);
+  };
+
+  const playAudioStream = (stream) => {
+    const arrayBuffer = new ArrayBuffer(stream.length);
+    const view = new Uint8Array(arrayBuffer);
+    for (let i = 0; i < stream.length; i++) {
+      view[i] = stream[i];
+    }
+    audioContextRef.current.decodeAudioData(arrayBuffer, (buffer) => {
+      if (audioBufferSourceRef.current) {
+        audioBufferSourceRef.current.stop();
+      }
+      audioBufferSourceRef.current = audioContextRef.current.createBufferSource();
+      audioBufferSourceRef.current.buffer = buffer;
+      audioBufferSourceRef.current.connect(audioWorkletNodeRef.current);
+      audioBufferSourceRef.current.start();
+    });
+  };
+
+  const addAudioChunk = (chunk) => {
+    const floatArray = new Float32Array(chunk.length / 4);
+    for (let i = 0; i < floatArray.length; i++) {
+      floatArray[i] = chunk.readFloatLE(i * 4);
+    }
+    audioWorkletNodeRef.current.port.postMessage(floatArray);
+  };
 
   const startBroadcasting = async () => {
     try {
       mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
       const source = audioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
       const processor = audioContextRef.current.createScriptProcessor(1024, 1, 1);
 
@@ -60,8 +85,11 @@ const AudioBroadcaster = () => {
 
       processor.onaudioprocess = (e) => {
         const audioData = e.inputBuffer.getChannelData(0);
-        socketRef.current.emit('audioChunk', Array.from(audioData));
+        socketRef.current.emit('audioChunk', new Float32Array(audioData));
       };
+
+      setIsBroadcasting(true);
+      setMessage('Broadcasting started');
     } catch (error) {
       console.error('Error accessing microphone:', error);
       setMessage('Error accessing microphone');
@@ -72,45 +100,28 @@ const AudioBroadcaster = () => {
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach(track => track.stop());
     }
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-    }
+    setIsBroadcasting(false);
+    setMessage('Broadcasting stopped');
   };
 
-  const playAudio = (audioChunk) => {
-    if (!audioChunk || audioChunk.length === 0) {
-      console.warn('Received empty audio chunk');
-      return;
+  const handleBroadcastToggle = () => {
+    if (isBroadcasting) {
+      stopBroadcasting();
+    } else {
+      startBroadcasting();
     }
-
-    try {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const buffer = audioContext.createBuffer(1, audioChunk.length, audioContext.sampleRate);
-      buffer.getChannelData(0).set(audioChunk);
-
-      const source = audioContext.createBufferSource();
-      source.buffer = buffer;
-      source.connect(audioContext.destination);
-      source.start();
-    } catch (error) {
-      console.error('Error playing audio:', error);
-    }
-  };
-
-  const handleBroadcastClick = () => {
-    socketRef.current.emit('requestBroadcast');
   };
 
   return (
     <div>
-      <h1>Audio Broadcaster</h1>
+      <h1>Live Audio Streamer</h1>
       <p>Status: {isConnected ? 'Connected' : 'Disconnected'}</p>
       <p>{message}</p>
-      <button onClick={handleBroadcastClick} disabled={isBroadcasting}>
-        {isBroadcasting ? 'Broadcasting...' : 'Start Broadcasting'}
+      <button onClick={handleBroadcastToggle}>
+        {isBroadcasting ? 'Stop Broadcasting' : 'Start Broadcasting'}
       </button>
     </div>
   );
 };
 
-export default AudioBroadcaster;
+export default AudioStreamer;
