@@ -112,11 +112,17 @@ const TellAPhoneApp = () => {
       mediaRecorderRef.current.ondataavailable = (event) => {
         console.log('Data available from MediaRecorder, size:', event.data.size);
         if (event.data.size > 0 && socketRef.current) {
-          console.log('Emitting audio stream data');
-          socketRef.current.emit('audioStream', event.data, mimeType);
+          console.log('Preparing to emit audio stream data');
+          try {
+            socketRef.current.emit('audioStream', event.data, mimeType);
+            console.log('Audio stream data emitted successfully');
+          } catch (error) {
+            console.error('Error emitting audio stream data:', error);
+          }
         }
       };
   
+      console.log('Starting MediaRecorder...');
       mediaRecorderRef.current.start(100);
       setIsBroadcasting(true);
       console.log('Broadcasting started with mime type:', mimeType);
@@ -148,8 +154,9 @@ const TellAPhoneApp = () => {
     });
   
     socketRef.current.on('disconnect', (reason) => {
-      console.log('Disconnected from server. Reason:', reason);
-      setIsConnected(false);
+      console.log('Socket disconnected. Reason:', reason);
+      console.log('Current broadcasting state:', isBroadcasting);
+      console.log('Current MediaRecorder state:', mediaRecorderRef.current ? mediaRecorderRef.current.state : 'No MediaRecorder');
     });
   
     socketRef.current.on('error', (error) => {
@@ -161,6 +168,13 @@ const TellAPhoneApp = () => {
       setIsBroadcasting(true);
       setIsAudioEnabled(false);
       startBroadcasting();
+    });
+    
+    socketRef.current.on('stopBroadcasting', () => {
+      console.log('Received stopBroadcasting event');
+      setIsBroadcasting(false);
+      setIsAudioEnabled(true);
+      stopBroadcasting();
     });
 
     socketRef.current.on('connect_error', (error) => {
@@ -177,11 +191,6 @@ const TellAPhoneApp = () => {
     });
     
 
-    socketRef.current.on('stopBroadcasting', () => {
-      setIsBroadcasting(false);
-      setIsAudioEnabled(true);
-      stopBroadcasting();
-    });
 
     socketRef.current.on('broadcastAudio', (audioChunk, mimeType) => {
       if (!isBroadcasting && isAudioEnabled) {
