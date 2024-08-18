@@ -11,7 +11,7 @@ const WebRTCAudioStreamer = () => {
   const peerConnectionsRef = useRef({});
 
   useEffect(() => {
-    wsRef.current = new WebSocket('ws://api.raydeeo.com');
+    wsRef.current = new WebSocket('wss://api.raydeeo.com');
 
     wsRef.current.onopen = () => {
       setIsConnected(true);
