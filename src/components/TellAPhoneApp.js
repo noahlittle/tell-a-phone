@@ -7,9 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MicIcon, MicOffIcon, UserIcon, ListOrderedIcon, TimerIcon } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 
 const AudioBroadcaster = () => {
   const [isBroadcasting, setIsBroadcasting] = useState(false);
@@ -18,9 +15,6 @@ const AudioBroadcaster = () => {
   const [queuePosition, setQueuePosition] = useState(null);
   const [queueLength, setQueueLength] = useState(0);
   const [timeLeft, setTimeLeft] = useState(10);
-  const [username, setUsername] = useState('');
-  const [showUsernameModal, setShowUsernameModal] = useState(true);
-  const [currentBroadcaster, setCurrentBroadcaster] = useState('');
   const socketRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -35,16 +29,9 @@ const AudioBroadcaster = () => {
   const BROADCAST_LIMIT = 10; // 10 seconds
 
   useEffect(() => {
-    if (username) {
-      initializeSocket();
-    }
-  }, [username]);
-
-  const initializeSocket = () => {
     socketRef.current = io('https://api.raydeeo.com:3001', {
       withCredentials: true,
-      transports: ['websocket'],
-      query: { username }
+      transports: ['websocket']
     });
 
     socketRef.current.on('connect', () => {
@@ -58,7 +45,6 @@ const AudioBroadcaster = () => {
       setIsBroadcasting(false);
       setQueuePosition(null);
       setQueueLength(0);
-      setCurrentBroadcaster('');
       stopTimer();
     });
 
@@ -75,10 +61,9 @@ const AudioBroadcaster = () => {
       setOnlineUsers(count);
     });
 
-    socketRef.current.on('queueUpdate', ({ position, length, currentBroadcaster }) => {
+    socketRef.current.on('queueUpdate', ({ position, length }) => {
       setQueuePosition(position);
       setQueueLength(length);
-      setCurrentBroadcaster(currentBroadcaster);
       if (position === 0) {
         startBroadcasting();
       } else if (position === null) {
@@ -95,7 +80,7 @@ const AudioBroadcaster = () => {
       }
       stopTimer();
     };
-  };
+  }, []);
 
   useEffect(() => {
     if (isBroadcasting) {
@@ -237,47 +222,6 @@ const AudioBroadcaster = () => {
     }
   };
 
-  const handleUsernameSubmit = (e) => {
-    e.preventDefault();
-    if (username.length === 6) {
-      setShowUsernameModal(false);
-    }
-  };
-
-  if (showUsernameModal) {
-    return (
-      <Dialog open={showUsernameModal} onOpenChange={setShowUsernameModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Enter your username</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleUsernameSubmit}>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="username" className="text-right">
-                  Username
-                </Label>
-                <Input
-                  id="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value.slice(0, 6))}
-                  className="col-span-3"
-                  maxLength={6}
-                  required
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="submit" disabled={username.length !== 6}>
-                Start Listening
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
   return (
     <Card className="w-[350px]">
       <CardHeader>
@@ -313,11 +257,6 @@ const AudioBroadcaster = () => {
             <ListOrderedIcon className="h-4 w-4" />
             <span>{queueLength} in queue</span>
           </div>
-          {currentBroadcaster && (
-            <Badge variant="outline">
-              Now Broadcasting: {currentBroadcaster}
-            </Badge>
-          )}
           {queuePosition !== null && (
             <Badge variant="secondary">
               {queuePosition === 0 ? "Broadcasting" : `Queue Position: ${queuePosition + 1}`}
