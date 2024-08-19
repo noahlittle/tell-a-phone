@@ -24,7 +24,6 @@ const AudioBroadcaster = () => {
   const streamRef = useRef(null);
   const gainNodeRef = useRef(null);
   const compressorRef = useRef(null);
-  const timerRef = useRef(null);
 
   const BUFFER_SIZE = 4096;
   const SAMPLE_RATE = 48000;
@@ -53,7 +52,6 @@ const AudioBroadcaster = () => {
       setIsBroadcasting(false);
       setQueuePosition(null);
       setQueueLength(0);
-      stopTimer();
     });
 
     socketRef.current.on('connect_error', (error) => {
@@ -72,9 +70,17 @@ const AudioBroadcaster = () => {
     socketRef.current.on('queueUpdate', ({ position, length }) => {
       setQueuePosition(position);
       setQueueLength(length);
-      if (position === 0) {
+    });
+
+    socketRef.current.on('timeLeft', (time) => {
+      setTimeLeft(time);
+    });
+
+    socketRef.current.on('isBroadcasting', (status) => {
+      setIsBroadcasting(status);
+      if (status) {
         startBroadcasting();
-      } else if (position === null) {
+      } else {
         stopBroadcasting();
       }
     });
@@ -88,38 +94,8 @@ const AudioBroadcaster = () => {
       if (audioContextRef.current) {
         audioContextRef.current.close();
       }
-      stopTimer();
     };
   }, []);
-
-  useEffect(() => {
-    if (isBroadcasting) {
-      startTimer();
-    } else {
-      stopTimer();
-    }
-  }, [isBroadcasting]);
-
-  const startTimer = () => {
-    setTimeLeft(BROADCAST_LIMIT);
-    timerRef.current = setInterval(() => {
-      setTimeLeft((prevTime) => {
-        if (prevTime <= 1) {
-          stopBroadcasting();
-          return 0;
-        }
-        return prevTime - 1;
-      });
-    }, 1000);
-  };
-
-  const stopTimer = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    setTimeLeft(BROADCAST_LIMIT);
-  };
 
   const initAudio = () => {
     if (!audioContextRef.current) {
@@ -171,7 +147,6 @@ const AudioBroadcaster = () => {
         }
         socketRef.current.emit('audio', Array.from(pcmData));
       };
-      setIsBroadcasting(true);
     } catch (error) {
       console.error('Error starting broadcast:', error);
     }
@@ -193,8 +168,6 @@ const AudioBroadcaster = () => {
     if (compressorRef.current) {
       compressorRef.current.disconnect();
     }
-    setIsBroadcasting(false);
-    socketRef.current.emit('broadcastEnded');
   };
 
   const playAudio = (audioData) => {
@@ -219,9 +192,7 @@ const AudioBroadcaster = () => {
 
   const leaveQueue = () => {
     socketRef.current.emit('leaveQueue');
-    stopBroadcasting();
     setQueuePosition(null);
-    setQueueLength(prevLength => Math.max(0, prevLength - 1));
   };
 
   const handleQueueButtonClick = () => {
@@ -289,7 +260,7 @@ const AudioBroadcaster = () => {
               )}
               {isBroadcasting && (
                 <div className="w-full space-y-2">
-                  <div className="flex justify-between items-center">
+<div className="flex justify-between items-center">
                     <TimerIcon className="h-4 w-4" />
                     <span>{timeLeft}s left</span>
                   </div>
