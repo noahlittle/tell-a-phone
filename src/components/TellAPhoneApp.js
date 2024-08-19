@@ -21,11 +21,8 @@ const AudioBroadcaster = () => {
   const [isInQueue, setIsInQueue] = useState(false);
   const socketRef = useRef(null);
   const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const scriptProcessorRef = useRef(null);
-  const streamRef = useRef(null);
   const gainNodeRef = useRef(null);
-  const compressorRef = useRef(null);
+  const streamRef = useRef(null);
 
   const BUFFER_SIZE = 4096;
   const SAMPLE_RATE = 48000;
@@ -46,6 +43,7 @@ const AudioBroadcaster = () => {
     socketRef.current.on('connect', () => {
       console.log('Connected to server');
       setIsConnected(true);
+      initAudio(); // Initialize audio context on connection
     });
 
     socketRef.current.on('disconnect', () => {
@@ -64,6 +62,7 @@ const AudioBroadcaster = () => {
     });
 
     socketRef.current.on('audio', (audioData) => {
+      console.log('Received audio data', audioData.length);
       playAudio(audioData);
     });
 
@@ -72,6 +71,7 @@ const AudioBroadcaster = () => {
     });
 
     socketRef.current.on('queueUpdate', ({ queue, currentBroadcaster }) => {
+      console.log('Queue update received', queue, currentBroadcaster);
       setQueueLength(queue.length);
       const userPosition = queue.indexOf(username);
       setQueuePosition(userPosition);
@@ -85,6 +85,7 @@ const AudioBroadcaster = () => {
     });
 
     socketRef.current.on('isBroadcasting', (status) => {
+      console.log('Broadcasting status update', status);
       setIsBroadcasting(status);
       if (status) {
         startBroadcasting();
@@ -107,26 +108,16 @@ const AudioBroadcaster = () => {
 
   const initAudio = () => {
     if (!audioContextRef.current) {
+      console.log('Initializing audio context');
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
-      analyserRef.current = audioContextRef.current.createAnalyser();
-      scriptProcessorRef.current = audioContextRef.current.createScriptProcessor(BUFFER_SIZE, 1, 1);
       gainNodeRef.current = audioContextRef.current.createGain();
-      compressorRef.current = audioContextRef.current.createDynamicsCompressor();
-
-      // Set up compressor
-      compressorRef.current.threshold.setValueAtTime(-24, audioContextRef.current.currentTime);
-      compressorRef.current.knee.setValueAtTime(40, audioContextRef.current.currentTime);
-      compressorRef.current.ratio.setValueAtTime(12, audioContextRef.current.currentTime);
-      compressorRef.current.attack.setValueAtTime(0, audioContextRef.current.currentTime);
-      compressorRef.current.release.setValueAtTime(0.25, audioContextRef.current.currentTime);
-
-      // Set up gain
-      gainNodeRef.current.gain.setValueAtTime(1.2, audioContextRef.current.currentTime);
+      gainNodeRef.current.connect(audioContextRef.current.destination);
     }
   };
 
   const startBroadcasting = async () => {
     try {
+      console.log('Starting broadcasting');
       initAudio();
       streamRef.current = await navigator.mediaDevices.getUserMedia({ 
         audio: { 
@@ -138,67 +129,60 @@ const AudioBroadcaster = () => {
         } 
       });
       const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
+      const processor = audioContextRef.current.createScriptProcessor(BUFFER_SIZE, 1, 1);
       
-      // Connect nodes: source -> gain -> compressor -> analyser -> scriptProcessor
-      source.connect(gainNodeRef.current);
-      gainNodeRef.current.connect(compressorRef.current);
-      compressorRef.current.connect(analyserRef.current);
-      analyserRef.current.connect(scriptProcessorRef.current);
-      scriptProcessorRef.current.connect(audioContextRef.current.destination);
+      source.connect(processor);
+      processor.connect(audioContextRef.current.destination);
 
-      scriptProcessorRef.current.onaudioprocess = (e) => {
+      processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
-        // Convert to 16-bit PCM
         const pcmData = new Int16Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
           pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
         }
         socketRef.current.emit('audio', Array.from(pcmData));
       };
+
+      setIsBroadcasting(true);
     } catch (error) {
       console.error('Error starting broadcast:', error);
     }
   };
 
   const stopBroadcasting = () => {
+    console.log('Stopping broadcasting');
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
-    if (scriptProcessorRef.current) {
-      scriptProcessorRef.current.disconnect();
-    }
-    if (analyserRef.current) {
-      analyserRef.current.disconnect();
-    }
-    if (gainNodeRef.current) {
-      gainNodeRef.current.disconnect();
-    }
-    if (compressorRef.current) {
-      compressorRef.current.disconnect();
-    }
+    setIsBroadcasting(false);
   };
 
   const playAudio = (audioData) => {
     if (!audioContextRef.current) {
+      console.log('Audio context not initialized, initializing now');
       initAudio();
     }
+    
+    console.log('Playing audio', audioData.length);
     const buffer = audioContextRef.current.createBuffer(1, audioData.length, SAMPLE_RATE);
     const channelData = buffer.getChannelData(0);
     for (let i = 0; i < audioData.length; i++) {
-      // Convert back from 16-bit PCM to float
       channelData[i] = audioData[i] / 0x7FFF;
     }
     const source = audioContextRef.current.createBufferSource();
     source.buffer = buffer;
-    source.connect(audioContextRef.current.destination);
+    source.connect(gainNodeRef.current);
     source.start();
+    console.log('Audio playback started');
   };
 
   const joinQueue = () => {
+    console.log('Joining queue');
     socketRef.current.emit('joinQueue');
   };
 
   const leaveQueue = () => {
+    console.log('Leaving queue');
     socketRef.current.emit('leaveQueue');
   };
 
