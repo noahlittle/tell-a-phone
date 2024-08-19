@@ -25,6 +25,7 @@ const AudioBroadcaster = () => {
   const streamRef = useRef(null);
   const gainNodeRef = useRef(null);
   const compressorRef = useRef(null);
+  const [isInQueue, setIsInQueue] = useState(false);
 
   const BUFFER_SIZE = 4096;
   const SAMPLE_RATE = 48000;
@@ -71,7 +72,9 @@ const AudioBroadcaster = () => {
 
     socketRef.current.on('queueUpdate', ({ queue, currentBroadcaster }) => {
       setQueueLength(queue.length);
-      setQueuePosition(queue.indexOf(username));
+      const userPosition = queue.indexOf(username);
+      setQueuePosition(userPosition);
+      setIsInQueue(userPosition !== -1);
       setCurrentBroadcaster(currentBroadcaster);
       setIsBroadcasting(currentBroadcaster === username);
     });
@@ -192,10 +195,13 @@ const AudioBroadcaster = () => {
 
   const joinQueue = () => {
     socketRef.current.emit('joinQueue');
+    setIsInQueue(true);
   };
 
   const leaveQueue = () => {
     socketRef.current.emit('leaveQueue');
+    setIsInQueue(false);
+    setQueuePosition(null);
   };
 
   const handleQueueButtonClick = () => {
@@ -235,10 +241,10 @@ const AudioBroadcaster = () => {
             <>
               <Button
                 onClick={handleQueueButtonClick}
-                variant={queuePosition !== null ? "destructive" : "default"}
+                variant={isInQueue ? "destructive" : "default"}
                 className="w-full"
               >
-                {queuePosition !== null ? (
+                {isInQueue ? (
                   <>
                     <MicOffIcon className="mr-2 h-4 w-4" /> Leave Queue
                   </>
@@ -261,7 +267,7 @@ const AudioBroadcaster = () => {
                   {currentBroadcaster === username ? "You are" : `${currentBroadcaster} is`} broadcasting
                 </Badge>
               )}
-              {queuePosition !== null && queuePosition > 0 && (
+              {isInQueue && queuePosition > 0 && (
                 <Badge variant="secondary">
                   Queue Position: {queuePosition + 1}
                 </Badge>
