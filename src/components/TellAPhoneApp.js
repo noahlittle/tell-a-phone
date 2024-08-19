@@ -8,13 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MicIcon, MicOffIcon, UserIcon, ListOrderedIcon, TimerIcon } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 const AudioBroadcaster = () => {
   const [username, setUsername] = useState('');
-  const [isUsernameSet, setIsUsernameSet] = useState(false);
-  const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState(0);
   const [queuePosition, setQueuePosition] = useState(null);
   const [queueLength, setQueueLength] = useState(0);
@@ -32,62 +30,67 @@ const AudioBroadcaster = () => {
   const SAMPLE_RATE = 48000;
   const BROADCAST_LIMIT = 10; // 10 seconds
 
-  useEffect(() => {
-    if (isUsernameSet) {
-      socketRef.current = io('https://api.raydeeo.com:3001', {
-        withCredentials: true,
-        transports: ['websocket'],
-        query: { username }
-      });
-
-      socketRef.current.on('connect', () => {
-        console.log('Connected to server');
-        setIsConnected(true);
-      });
-
-      socketRef.current.on('disconnect', () => {
-        console.log('Disconnected from server');
-        setIsConnected(false);
-        setIsBroadcasting(false);
-        setQueuePosition(null);
-        setQueueLength(0);
-        stopTimer();
-      });
-
-      socketRef.current.on('connect_error', (error) => {
-        console.error('Connection error:', error);
-        setIsConnected(false);
-      });
-
-      socketRef.current.on('audio', (audioData) => {
-        playAudio(audioData);
-      });
-
-      socketRef.current.on('userCount', (count) => {
-        setOnlineUsers(count);
-      });
-
-      socketRef.current.on('queueUpdate', ({ position, length }) => {
-        setQueuePosition(position);
-        setQueueLength(length);
-        if (position === 0) {
-          startBroadcasting();
-        } else if (position === null) {
-          stopBroadcasting();
-        }
-      });
-
-      return () => {
-        if (socketRef.current) {
-          socketRef.current.disconnect();
-        }
-        if (audioContextRef.current) {
-          audioContextRef.current.close();
-        }
-        stopTimer();
-      };
+  const connectToServer = () => {
+    if (username.length !== 6) {
+      alert('Username must be exactly 6 characters long.');
+      return;
     }
-  }, [isUsernameSet, username]);
+
+    socketRef.current = io('https://api.raydeeo.com:3001', {
+      withCredentials: true,
+      transports: ['websocket'],
+      auth: { username }
+    });
+
+    socketRef.current.on('connect', () => {
+      console.log('Connected to server');
+      setIsConnected(true);
+    });
+
+    socketRef.current.on('disconnect', () => {
+      console.log('Disconnected from server');
+      setIsConnected(false);
+      setIsBroadcasting(false);
+      setQueuePosition(null);
+      setQueueLength(0);
+      stopTimer();
+    });
+
+    socketRef.current.on('connect_error', (error) => {
+      console.error('Connection error:', error);
+      setIsConnected(false);
+    });
+
+    socketRef.current.on('audio', (audioData) => {
+      playAudio(audioData);
+    });
+
+    socketRef.current.on('userCount', (count) => {
+      setOnlineUsers(count);
+    });
+
+    socketRef.current.on('queueUpdate', ({ position, length }) => {
+      setQueuePosition(position);
+      setQueueLength(length);
+      if (position === 0) {
+        startBroadcasting();
+      } else if (position === null) {
+        stopBroadcasting();
+      }
+    });
+  };
+
+  useEffect(() => {
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+      stopTimer();
+    };
+  }, []);
 
   useEffect(() => {
     if (isBroadcasting) {
@@ -221,47 +224,13 @@ const AudioBroadcaster = () => {
     setQueueLength(prevLength => Math.max(0, prevLength - 1));
   };
 
-  const handleButtonClick = () => {
+  const handleQueueButtonClick = () => {
     if (queuePosition !== null) {
       leaveQueue();
     } else {
       joinQueue();
     }
   };
-
-  const handleUsernameSubmit = (e) => {
-    e.preventDefault();
-    if (username.length === 6) {
-      setIsUsernameSet(true);
-    } else {
-      alert('Username must be exactly 6 characters long.');
-    }
-  };
-
-  if (!isUsernameSet) {
-    return (
-      <Card className="w-[350px]">
-        <CardHeader>
-          <CardTitle>Set Your Username</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleUsernameSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username">Username (6 characters)</Label>
-              <Input
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                maxLength={6}
-                required
-              />
-            </div>
-            <Button type="submit" className="w-full">Connect</Button>
-          </form>
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
     <Card className="w-[350px]">
@@ -275,43 +244,59 @@ const AudioBroadcaster = () => {
       </CardHeader>
       <CardContent>
         <div className="flex flex-col items-center space-y-4">
-          <div className="text-sm font-medium">Username: {username}</div>
-          <Button
-            onClick={handleButtonClick}
-            variant={queuePosition !== null ? "destructive" : "default"}
-            className="w-full"
-          >
-            {queuePosition !== null ? (
-              <>
-                <MicOffIcon className="mr-2 h-4 w-4" /> Leave Queue
-              </>
-            ) : (
-              <>
-                <MicIcon className="mr-2 h-4 w-4" /> Join Queue
-              </>
-            )}
-          </Button>
-          <div className="flex items-center space-x-2">
-            <UserIcon className="h-4 w-4" />
-            <span>{onlineUsers} online</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <ListOrderedIcon className="h-4 w-4" />
-            <span>{queueLength} in queue</span>
-          </div>
-          {queuePosition !== null && (
-            <Badge variant="secondary">
-              {queuePosition === 0 ? "Broadcasting" : `Queue Position: ${queuePosition + 1}`}
-            </Badge>
-          )}
-          {isBroadcasting && (
-            <div className="w-full space-y-2">
-              <div className="flex justify-between items-center">
-                <TimerIcon className="h-4 w-4" />
-                <span>{timeLeft}s left</span>
+          {!isConnected ? (
+            <>
+              <Input
+                type="text"
+                placeholder="Enter 6-char username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                maxLength={6}
+              />
+              <Button onClick={connectToServer} className="w-full">
+                Connect
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                onClick={handleQueueButtonClick}
+                variant={queuePosition !== null ? "destructive" : "default"}
+                className="w-full"
+              >
+                {queuePosition !== null ? (
+                  <>
+                    <MicOffIcon className="mr-2 h-4 w-4" /> Leave Queue
+                  </>
+                ) : (
+                  <>
+                    <MicIcon className="mr-2 h-4 w-4" /> Join Queue
+                  </>
+                )}
+              </Button>
+              <div className="flex items-center space-x-2">
+                <UserIcon className="h-4 w-4" />
+                <span>{onlineUsers} online</span>
               </div>
-              <Progress value={(timeLeft / BROADCAST_LIMIT) * 100} />
-            </div>
+              <div className="flex items-center space-x-2">
+                <ListOrderedIcon className="h-4 w-4" />
+                <span>{queueLength} in queue</span>
+              </div>
+              {queuePosition !== null && (
+                <Badge variant="secondary">
+                  {queuePosition === 0 ? "Broadcasting" : `Queue Position: ${queuePosition + 1}`}
+                </Badge>
+              )}
+              {isBroadcasting && (
+                <div className="w-full space-y-2">
+                  <div className="flex justify-between items-center">
+                    <TimerIcon className="h-4 w-4" />
+                    <span>{timeLeft}s left</span>
+                  </div>
+                  <Progress value={(timeLeft / BROADCAST_LIMIT) * 100} />
+                </div>
+              )}
+            </>
           )}
         </div>
       </CardContent>
