@@ -17,6 +17,7 @@ const AudioBroadcaster = () => {
   const [queuePosition, setQueuePosition] = useState(null);
   const [queueLength, setQueueLength] = useState(0);
   const [timeLeft, setTimeLeft] = useState(10);
+  const [currentBroadcaster, setCurrentBroadcaster] = useState(null);
   const socketRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -52,6 +53,7 @@ const AudioBroadcaster = () => {
       setIsBroadcasting(false);
       setQueuePosition(null);
       setQueueLength(0);
+      setCurrentBroadcaster(null);
     });
 
     socketRef.current.on('connect_error', (error) => {
@@ -67,9 +69,11 @@ const AudioBroadcaster = () => {
       setOnlineUsers(count);
     });
 
-    socketRef.current.on('queueUpdate', ({ position, length }) => {
-      setQueuePosition(position);
-      setQueueLength(length);
+    socketRef.current.on('queueUpdate', ({ queue, currentBroadcaster }) => {
+      setQueueLength(queue.length);
+      setQueuePosition(queue.indexOf(username));
+      setCurrentBroadcaster(currentBroadcaster);
+      setIsBroadcasting(currentBroadcaster === username);
     });
 
     socketRef.current.on('timeLeft', (time) => {
@@ -192,7 +196,6 @@ const AudioBroadcaster = () => {
 
   const leaveQueue = () => {
     socketRef.current.emit('leaveQueue');
-    setQueuePosition(null);
   };
 
   const handleQueueButtonClick = () => {
@@ -253,14 +256,19 @@ const AudioBroadcaster = () => {
                 <ListOrderedIcon className="h-4 w-4" />
                 <span>{queueLength} in queue</span>
               </div>
-              {queuePosition !== null && (
+              {currentBroadcaster && (
                 <Badge variant="secondary">
-                  {queuePosition === 0 ? "Broadcasting" : `Queue Position: ${queuePosition + 1}`}
+                  {currentBroadcaster === username ? "You are" : `${currentBroadcaster} is`} broadcasting
+                </Badge>
+              )}
+              {queuePosition !== null && queuePosition > 0 && (
+                <Badge variant="secondary">
+                  Queue Position: {queuePosition + 1}
                 </Badge>
               )}
               {isBroadcasting && (
                 <div className="w-full space-y-2">
-<div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center">
                     <TimerIcon className="h-4 w-4" />
                     <span>{timeLeft}s left</span>
                   </div>
