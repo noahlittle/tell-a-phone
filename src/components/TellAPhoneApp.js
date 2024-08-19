@@ -140,7 +140,9 @@ const AudioBroadcaster = () => {
         for (let i = 0; i < inputData.length; i++) {
           pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
         }
-        socketRef.current.emit('audio', Array.from(pcmData));
+        const audioData = Array.from(pcmData);
+        console.log('Sending audio data', audioData.length);
+        socketRef.current.emit('audio', audioData);
       };
 
       setIsBroadcasting(true);
@@ -193,6 +195,20 @@ const AudioBroadcaster = () => {
       joinQueue();
     }
   };
+
+  useEffect(() => {
+    if (socketRef.current) {
+      socketRef.current.on('startBroadcasting', () => {
+        console.log('Received startBroadcasting signal');
+        startBroadcasting();
+      });
+
+      socketRef.current.on('stopBroadcasting', () => {
+        console.log('Received stopBroadcasting signal');
+        stopBroadcasting();
+      });
+    }
+  }, [socketRef.current]);
 
   return (
     <Card className="w-[350px]">
