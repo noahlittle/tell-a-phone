@@ -7,8 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MicIcon, MicOffIcon, UserIcon, ListOrderedIcon, TimerIcon } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const AudioBroadcaster = () => {
+  const [username, setUsername] = useState('');
+  const [isUsernameSet, setIsUsernameSet] = useState(false);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState(0);
@@ -29,58 +33,61 @@ const AudioBroadcaster = () => {
   const BROADCAST_LIMIT = 10; // 10 seconds
 
   useEffect(() => {
-    socketRef.current = io('https://api.raydeeo.com:3001', {
-      withCredentials: true,
-      transports: ['websocket']
-    });
+    if (isUsernameSet) {
+      socketRef.current = io('https://api.raydeeo.com:3001', {
+        withCredentials: true,
+        transports: ['websocket'],
+        query: { username }
+      });
 
-    socketRef.current.on('connect', () => {
-      console.log('Connected to server');
-      setIsConnected(true);
-    });
+      socketRef.current.on('connect', () => {
+        console.log('Connected to server');
+        setIsConnected(true);
+      });
 
-    socketRef.current.on('disconnect', () => {
-      console.log('Disconnected from server');
-      setIsConnected(false);
-      setIsBroadcasting(false);
-      setQueuePosition(null);
-      setQueueLength(0);
-      stopTimer();
-    });
+      socketRef.current.on('disconnect', () => {
+        console.log('Disconnected from server');
+        setIsConnected(false);
+        setIsBroadcasting(false);
+        setQueuePosition(null);
+        setQueueLength(0);
+        stopTimer();
+      });
 
-    socketRef.current.on('connect_error', (error) => {
-      console.error('Connection error:', error);
-      setIsConnected(false);
-    });
+      socketRef.current.on('connect_error', (error) => {
+        console.error('Connection error:', error);
+        setIsConnected(false);
+      });
 
-    socketRef.current.on('audio', (audioData) => {
-      playAudio(audioData);
-    });
+      socketRef.current.on('audio', (audioData) => {
+        playAudio(audioData);
+      });
 
-    socketRef.current.on('userCount', (count) => {
-      setOnlineUsers(count);
-    });
+      socketRef.current.on('userCount', (count) => {
+        setOnlineUsers(count);
+      });
 
-    socketRef.current.on('queueUpdate', ({ position, length }) => {
-      setQueuePosition(position);
-      setQueueLength(length);
-      if (position === 0) {
-        startBroadcasting();
-      } else if (position === null) {
-        stopBroadcasting();
-      }
-    });
+      socketRef.current.on('queueUpdate', ({ position, length }) => {
+        setQueuePosition(position);
+        setQueueLength(length);
+        if (position === 0) {
+          startBroadcasting();
+        } else if (position === null) {
+          stopBroadcasting();
+        }
+      });
 
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
-      stopTimer();
-    };
-  }, []);
+      return () => {
+        if (socketRef.current) {
+          socketRef.current.disconnect();
+        }
+        if (audioContextRef.current) {
+          audioContextRef.current.close();
+        }
+        stopTimer();
+      };
+    }
+  }, [isUsernameSet, username]);
 
   useEffect(() => {
     if (isBroadcasting) {
@@ -222,6 +229,40 @@ const AudioBroadcaster = () => {
     }
   };
 
+  const handleUsernameSubmit = (e) => {
+    e.preventDefault();
+    if (username.length === 6) {
+      setIsUsernameSet(true);
+    } else {
+      alert('Username must be exactly 6 characters long.');
+    }
+  };
+
+  if (!isUsernameSet) {
+    return (
+      <Card className="w-[350px]">
+        <CardHeader>
+          <CardTitle>Set Your Username</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleUsernameSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="username">Username (6 characters)</Label>
+              <Input
+                id="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                maxLength={6}
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full">Connect</Button>
+          </form>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="w-[350px]">
       <CardHeader>
@@ -234,6 +275,7 @@ const AudioBroadcaster = () => {
       </CardHeader>
       <CardContent>
         <div className="flex flex-col items-center space-y-4">
+          <div className="text-sm font-medium">Username: {username}</div>
           <Button
             onClick={handleButtonClick}
             variant={queuePosition !== null ? "destructive" : "default"}
