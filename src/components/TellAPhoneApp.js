@@ -18,6 +18,7 @@ const AudioBroadcaster = () => {
   const [queueLength, setQueueLength] = useState(0);
   const [timeLeft, setTimeLeft] = useState(10);
   const [currentBroadcaster, setCurrentBroadcaster] = useState(null);
+  const [isInQueue, setIsInQueue] = useState(false);
   const socketRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -25,7 +26,6 @@ const AudioBroadcaster = () => {
   const streamRef = useRef(null);
   const gainNodeRef = useRef(null);
   const compressorRef = useRef(null);
-  const [isInQueue, setIsInQueue] = useState(false);
 
   const BUFFER_SIZE = 4096;
   const SAMPLE_RATE = 48000;
@@ -55,6 +55,7 @@ const AudioBroadcaster = () => {
       setQueuePosition(null);
       setQueueLength(0);
       setCurrentBroadcaster(null);
+      setIsInQueue(false);
     });
 
     socketRef.current.on('connect_error', (error) => {
@@ -195,17 +196,14 @@ const AudioBroadcaster = () => {
 
   const joinQueue = () => {
     socketRef.current.emit('joinQueue');
-    setIsInQueue(true);
   };
 
   const leaveQueue = () => {
     socketRef.current.emit('leaveQueue');
-    setIsInQueue(false);
-    setQueuePosition(null);
   };
 
   const handleQueueButtonClick = () => {
-    if (queuePosition !== null) {
+    if (isInQueue) {
       leaveQueue();
     } else {
       joinQueue();
