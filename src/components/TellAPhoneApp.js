@@ -50,16 +50,15 @@ export default function WalkieTalkie() {
 
   useEffect(() => {
     if (step !== 'main') return;
-    console.log(totalTime, timeLeft);
-
+  
     const handleSpeakerUpdate = ({ speaker, timeLeft, totalTime, upvotes, downvotes }) => {
       setCurrentSpeaker(speaker);
       setTimeLeft(timeLeft);
-      setTotalTime(totalTime);
+      setTotalTime(totalTime || INITIAL_BROADCAST_TIME);
       setUpvotes(upvotes);
       setDownvotes(downvotes);
       setHasVoted(false);
-      setProgress(((totalTime - timeLeft) / totalTime) * 100);
+      updateProgress(timeLeft, totalTime);
       
       if (speaker === username) {
         setIsSpeaking(true);
@@ -68,15 +67,22 @@ export default function WalkieTalkie() {
         stopSpeaking();
       }
     };
-
+  
     const handleTimeUpdate = ({ timeLeft, totalTime, upvotes, downvotes }) => {
       setTimeLeft(timeLeft);
-      setTotalTime(totalTime);
+      setTotalTime(totalTime || INITIAL_BROADCAST_TIME);
       setUpvotes(upvotes);
       setDownvotes(downvotes);
-      setProgress(((totalTime - timeLeft) / totalTime) * 100);
+      updateProgress(timeLeft, totalTime);
     };
-
+  
+    const updateProgress = (timeLeft, totalTime) => {
+      const newTotalTime = totalTime || INITIAL_BROADCAST_TIME;
+      const newProgress = newTotalTime > 0 ? ((newTotalTime - timeLeft) / newTotalTime) * 100 : 0;
+      setProgress(newProgress);
+      console.log(`Updated progress: ${newProgress}%, timeLeft: ${timeLeft}, totalTime: ${newTotalTime}`);
+    };
+  
     socket.on('speakerUpdate', handleSpeakerUpdate);
     socket.on('timeUpdate', handleTimeUpdate);
     socket.on('queueUpdate', (newQueue) => {
