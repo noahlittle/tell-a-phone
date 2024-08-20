@@ -1,4 +1,3 @@
-"use client";
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { Button } from "@/components/ui/button"
@@ -24,7 +23,7 @@ export default function WalkieTalkie() {
   const [currentSpeaker, setCurrentSpeaker] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0);
   const [totalTime, setTotalTime] = useState(INITIAL_BROADCAST_TIME);
-  const [elapsedTime, setElapsedTime] = useState(0);
+  const [progress, setProgress] = useState(0);
   const [userCount, setUserCount] = useState(0);
   const [volume, setVolume] = useState(1);
   const [queueLength, setQueueLength] = useState(0);
@@ -50,28 +49,33 @@ export default function WalkieTalkie() {
   useEffect(() => {
     if (step !== 'main') return;
 
-    socket.on('speakerUpdate', ({ speaker, timeLeft, totalTime, upvotes, downvotes }) => {
+    const handleSpeakerUpdate = ({ speaker, timeLeft, totalTime, upvotes, downvotes }) => {
       setCurrentSpeaker(speaker);
       setTimeLeft(timeLeft);
       setTotalTime(totalTime);
-      setElapsedTime(totalTime - timeLeft);
       setUpvotes(upvotes);
       setDownvotes(downvotes);
       setHasVoted(false);
+      setProgress(((totalTime - timeLeft) / totalTime) * 100);
+      
       if (speaker === username) {
         setIsSpeaking(true);
         initAudio();
       } else if (isSpeaking) {
         stopSpeaking();
       }
-    });
-    socket.on('timeUpdate', ({ timeLeft, totalTime, upvotes, downvotes }) => {
+    };
+
+    const handleTimeUpdate = ({ timeLeft, totalTime, upvotes, downvotes }) => {
       setTimeLeft(timeLeft);
       setTotalTime(totalTime);
-      setElapsedTime(totalTime - timeLeft);
       setUpvotes(upvotes);
       setDownvotes(downvotes);
-    });
+      setProgress(((totalTime - timeLeft) / totalTime) * 100);
+    };
+
+    socket.on('speakerUpdate', handleSpeakerUpdate);
+    socket.on('timeUpdate', handleTimeUpdate);
     socket.on('queueUpdate', (newQueue) => {
       setQueueLength(newQueue.length);
       setInQueue(newQueue.includes(username));
@@ -269,7 +273,7 @@ export default function WalkieTalkie() {
         </div>
         {currentSpeaker && (
           <div className="space-y-2">
-            <Progress value={(elapsedTime / totalTime) * 100} className="w-full bg-gray-700" />
+            <Progress value={progress} className="w-full bg-gray-700" />
             <div className="flex justify-between text-sm">
               <span>{timeLeft}s left</span>
               <span>👍 {upvotes} | 👎 {downvotes}</span>
