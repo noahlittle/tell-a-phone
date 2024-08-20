@@ -7,45 +7,66 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Input } from "@/components/ui/input"
 import { Mic, MicOff, User } from 'lucide-react'
 
-const socket = io('https://api.raydeeo.com');
+const socket = io('https://api.raydeeo.com:3001');
 
 export default function WalkieTalkie() {
   const [username, setUsername] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentSpeaker, setCurrentSpeaker] = useState(null);
   const [userCount, setUserCount] = useState(0);
-  const [audioStream, setAudioStream] = useState(null);
-  const peerConnections = useRef({});
+  const audioContext = useRef(null);
+  const audioStreamRef = useRef(null);
+  const audioSourceRef = useRef(null);
+  const processorRef = useRef(null);
 
   useEffect(() => {
     socket.on('speakerUpdate', (speaker) => setCurrentSpeaker(speaker));
     socket.on('userCount', (count) => setUserCount(count));
-
-    socket.on('offer', handleOffer);
-    socket.on('answer', handleAnswer);
-    socket.on('ice-candidate', handleNewICECandidate);
+    
+    socket.on('audioChunk', (audioChunk) => {
+      if (!audioContext.current) {
+        audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const arrayBuffer = new ArrayBuffer(audioChunk.length);
+      const view = new Uint8Array(arrayBuffer);
+      for (let i = 0; i < audioChunk.length; i++) {
+        view[i] = audioChunk[i];
+      }
+      audioContext.current.decodeAudioData(arrayBuffer, (buffer) => {
+        const source = audioContext.current.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioContext.current.destination);
+        source.start();
+      });
+    });
 
     return () => {
       socket.off('speakerUpdate');
       socket.off('userCount');
-      socket.off('offer');
-      socket.off('answer');
-      socket.off('ice-candidate');
+      socket.off('audioChunk');
     };
   }, []);
 
   const handleStartSpeaking = async () => {
-    if (!currentSpeaker) {
+    if (!currentSpeaker && username) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        setAudioStream(stream);
+        audioStreamRef.current = stream;
+        audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
+        audioSourceRef.current = audioContext.current.createMediaStreamSource(stream);
+        processorRef.current = audioContext.current.createScriptProcessor(1024, 1, 1);
+
+        audioSourceRef.current.connect(processorRef.current);
+        processorRef.current.connect(audioContext.current.destination);
+
+        processorRef.current.onaudioprocess = (e) => {
+          const left = e.inputBuffer.getChannelData(0);
+          const uint8Array = new Uint8Array(left.buffer);
+          socket.emit('audioChunk', uint8Array);
+        };
+
         setIsSpeaking(true);
         socket.emit('startSpeaking', username);
-
-        // Create and send offers to all connected peers
-        Object.values(peerConnections.current).forEach(pc => {
-          createAndSendOffer(pc);
-        });
       } catch (error) {
         console.error('Error accessing microphone:', error);
       }
@@ -53,85 +74,17 @@ export default function WalkieTalkie() {
   };
 
   const handleStopSpeaking = () => {
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach(track => track.stop());
+    }
+    if (audioSourceRef.current) {
+      audioSourceRef.current.disconnect();
+    }
+    if (processorRef.current) {
+      processorRef.current.disconnect();
+    }
     setIsSpeaking(false);
     socket.emit('stopSpeaking', username);
-    if (audioStream) {
-      audioStream.getTracks().forEach(track => track.stop());
-      setAudioStream(null);
-    }
-    // Close all peer connections
-    Object.values(peerConnections.current).forEach(pc => pc.close());
-    peerConnections.current = {};
-  };
-
-  const createPeerConnection = (recipientId) => {
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    });
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit('ice-candidate', event.candidate, recipientId);
-      }
-    };
-
-    pc.ontrack = (event) => {
-      // Handle incoming audio track
-      const audio = new Audio();
-      audio.srcObject = event.streams[0];
-      audio.play();
-    };
-
-    if (audioStream) {
-      audioStream.getTracks().forEach(track => pc.addTrack(track, audioStream));
-    }
-
-    peerConnections.current[recipientId] = pc;
-    return pc;
-  };
-
-  const createAndSendOffer = async (pc) => {
-    try {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.emit('offer', offer, pc.id);
-    } catch (error) {
-      console.error('Error creating offer:', error);
-    }
-  };
-
-  const handleOffer = async (offer, senderId) => {
-    const pc = createPeerConnection(senderId);
-    try {
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socket.emit('answer', answer, senderId);
-    } catch (error) {
-      console.error('Error handling offer:', error);
-    }
-  };
-
-  const handleAnswer = async (answer, senderId) => {
-    const pc = peerConnections.current[senderId];
-    if (pc) {
-      try {
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
-      } catch (error) {
-        console.error('Error handling answer:', error);
-      }
-    }
-  };
-
-  const handleNewICECandidate = async (candidate, senderId) => {
-    const pc = peerConnections.current[senderId];
-    if (pc) {
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch (error) {
-        console.error('Error adding ICE candidate:', error);
-      }
-    }
   };
 
   return (
