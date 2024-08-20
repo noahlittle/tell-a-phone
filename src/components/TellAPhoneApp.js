@@ -48,17 +48,22 @@ export default function WalkieTalkie() {
     };
   }, []);
 
+  
+
   useEffect(() => {
     if (step !== 'main') return;
+  
+    let localTotalTime = INITIAL_BROADCAST_TIME;
   
     const handleSpeakerUpdate = ({ speaker, timeLeft, totalTime, upvotes, downvotes }) => {
       setCurrentSpeaker(speaker);
       setTimeLeft(timeLeft);
-      setTotalTime(totalTime || INITIAL_BROADCAST_TIME);
+      localTotalTime = totalTime || INITIAL_BROADCAST_TIME;
+      setTotalTime(localTotalTime);
       setUpvotes(upvotes);
       setDownvotes(downvotes);
       setHasVoted(false);
-      updateProgress(timeLeft, totalTime);
+      updateProgress(timeLeft, localTotalTime);
       
       if (speaker === username) {
         setIsSpeaking(true);
@@ -70,21 +75,32 @@ export default function WalkieTalkie() {
   
     const handleTimeUpdate = ({ timeLeft, totalTime, upvotes, downvotes }) => {
       setTimeLeft(timeLeft);
-      setTotalTime(totalTime || INITIAL_BROADCAST_TIME);
+      if (totalTime !== undefined) {
+        localTotalTime = totalTime;
+        setTotalTime(localTotalTime);
+      }
       setUpvotes(upvotes);
       setDownvotes(downvotes);
-      updateProgress(timeLeft, totalTime);
+      updateProgress(timeLeft, localTotalTime);
     };
   
     const updateProgress = (timeLeft, totalTime) => {
-      const newTotalTime = totalTime || INITIAL_BROADCAST_TIME;
-      const newProgress = newTotalTime > 0 ? ((newTotalTime - timeLeft) / newTotalTime) * 100 : 0;
+      const newProgress = totalTime > 0 ? ((totalTime - timeLeft) / totalTime) * 100 : 0;
       setProgress(newProgress);
-      console.log(`Updated progress: ${newProgress}%, timeLeft: ${timeLeft}, totalTime: ${newTotalTime}`);
+      console.log(`Updated progress: ${newProgress.toFixed(2)}%, timeLeft: ${timeLeft}, totalTime: ${totalTime}`);
     };
   
     socket.on('speakerUpdate', handleSpeakerUpdate);
     socket.on('timeUpdate', handleTimeUpdate);
+    socket.on('voteUpdate', ({ timeLeft, totalTime, upvotes, downvotes }) => {
+      setTimeLeft(timeLeft);
+      localTotalTime = totalTime;
+      setTotalTime(localTotalTime);
+      setUpvotes(upvotes);
+      setDownvotes(downvotes);
+      updateProgress(timeLeft, localTotalTime);
+    });
+
     socket.on('queueUpdate', (newQueue) => {
       setQueueLength(newQueue.length);
       setInQueue(newQueue.includes(username));
@@ -189,12 +205,12 @@ export default function WalkieTalkie() {
     }
   };
 
-  const handleVote = (voteType) => {
-    if (!hasVoted && currentSpeaker && currentSpeaker !== username) {
-      socket.emit('vote', { voteType });
-      setHasVoted(true);
-    }
-  };
+const handleVote = (voteType) => {
+  if (!hasVoted && currentSpeaker && currentSpeaker !== username) {
+    socket.emit('vote', { voteType, username });
+    setHasVoted(true);
+  }
+};
 
   const handleUsernameSubmit = () => {
     if (username.length >= 2 && username.length <= 10) {
