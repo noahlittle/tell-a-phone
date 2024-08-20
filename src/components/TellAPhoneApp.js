@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { Button } from "@/components/ui/button"
@@ -43,6 +42,9 @@ export default function WalkieTalkie() {
         stopSpeaking();
       }
     });
+    socket.on('timeUpdate', (newTimeLeft) => {
+      setTimeLeft(newTimeLeft);
+    });
     socket.on('userCount', (count) => setUserCount(count));
     socket.on('queueUpdate', (newQueue) => {
       setQueue(newQueue);
@@ -71,6 +73,7 @@ export default function WalkieTalkie() {
 
     return () => {
       socket.off('speakerUpdate');
+      socket.off('timeUpdate');
       socket.off('userCount');
       socket.off('queueUpdate');
       socket.off('audioChunk');
@@ -78,39 +81,43 @@ export default function WalkieTalkie() {
   }, [username, volume, isSpeaking]);
 
   const initAudio = async () => {
-    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
-    streamRef.current = await navigator.mediaDevices.getUserMedia({ 
-      audio: { 
-        sampleRate: SAMPLE_RATE,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: false
-      } 
-    });
-    sourceRef.current = audioContextRef.current.createMediaStreamSource(streamRef.current);
-    processorRef.current = audioContextRef.current.createScriptProcessor(BUFFER_SIZE, 1, 1);
-    gainNodeRef.current = audioContextRef.current.createGain();
-    compressorRef.current = audioContextRef.current.createDynamicsCompressor();
+    try {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
+      streamRef.current = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+          sampleRate: SAMPLE_RATE,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: false
+        } 
+      });
+      sourceRef.current = audioContextRef.current.createMediaStreamSource(streamRef.current);
+      processorRef.current = audioContextRef.current.createScriptProcessor(BUFFER_SIZE, 1, 1);
+      gainNodeRef.current = audioContextRef.current.createGain();
+      compressorRef.current = audioContextRef.current.createDynamicsCompressor();
 
-    compressorRef.current.threshold.setValueAtTime(-24, audioContextRef.current.currentTime);
-    compressorRef.current.knee.setValueAtTime(30, audioContextRef.current.currentTime);
-    compressorRef.current.ratio.setValueAtTime(12, audioContextRef.current.currentTime);
-    compressorRef.current.attack.setValueAtTime(0.003, audioContextRef.current.currentTime);
-    compressorRef.current.release.setValueAtTime(0.25, audioContextRef.current.currentTime);
+      compressorRef.current.threshold.setValueAtTime(-24, audioContextRef.current.currentTime);
+      compressorRef.current.knee.setValueAtTime(30, audioContextRef.current.currentTime);
+      compressorRef.current.ratio.setValueAtTime(12, audioContextRef.current.currentTime);
+      compressorRef.current.attack.setValueAtTime(0.003, audioContextRef.current.currentTime);
+      compressorRef.current.release.setValueAtTime(0.25, audioContextRef.current.currentTime);
 
-    sourceRef.current.connect(gainNodeRef.current);
-    gainNodeRef.current.connect(compressorRef.current);
-    compressorRef.current.connect(processorRef.current);
-    processorRef.current.connect(audioContextRef.current.destination);
+      sourceRef.current.connect(gainNodeRef.current);
+      gainNodeRef.current.connect(compressorRef.current);
+      compressorRef.current.connect(processorRef.current);
+      processorRef.current.connect(audioContextRef.current.destination);
 
-    processorRef.current.onaudioprocess = (e) => {
-      const inputData = e.inputBuffer.getChannelData(0);
-      const outputData = new Float32Array(inputData.length);
-      for (let i = 0; i < inputData.length; i++) {
-        outputData[i] = Math.max(-1, Math.min(1, inputData[i])); // Clipping
-      }
-      socket.emit('audioChunk', outputData);
-    };
+      processorRef.current.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        const outputData = new Float32Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) {
+          outputData[i] = Math.max(-1, Math.min(1, inputData[i])); // Clipping
+        }
+        socket.emit('audioChunk', outputData);
+      };
+    } catch (error) {
+      console.error('Error initializing audio:', error);
+    }
   };
 
   const stopSpeaking = () => {
