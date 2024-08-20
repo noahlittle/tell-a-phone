@@ -14,30 +14,35 @@ export default function WalkieTalkie() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentSpeaker, setCurrentSpeaker] = useState(null);
   const [userCount, setUserCount] = useState(0);
-  const audioContext = useRef(null);
-  const audioStreamRef = useRef(null);
-  const audioSourceRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const streamRef = useRef(null);
+  const sourceRef = useRef(null);
   const processorRef = useRef(null);
+  const gainNodeRef = useRef(null);
+  const compressorRef = useRef(null);
 
   useEffect(() => {
     socket.on('speakerUpdate', (speaker) => setCurrentSpeaker(speaker));
     socket.on('userCount', (count) => setUserCount(count));
     
     socket.on('audioChunk', (audioChunk) => {
-      if (!audioContext.current) {
-        audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
       }
-      const arrayBuffer = new ArrayBuffer(audioChunk.length);
-      const view = new Uint8Array(arrayBuffer);
-      for (let i = 0; i < audioChunk.length; i++) {
-        view[i] = audioChunk[i];
-      }
-      audioContext.current.decodeAudioData(arrayBuffer, (buffer) => {
-        const source = audioContext.current.createBufferSource();
-        source.buffer = buffer;
-        source.connect(audioContext.current.destination);
-        source.start();
-      });
+      
+      const floatArray = new Float32Array(audioChunk);
+      const buffer = audioContextRef.current.createBuffer(1, floatArray.length, 48000);
+      buffer.getChannelData(0).set(floatArray);
+      
+      const source = audioContextRef.current.createBufferSource();
+      source.buffer = buffer;
+      
+      const gainNode = audioContextRef.current.createGain();
+      gainNode.gain.setValueAtTime(1, audioContextRef.current.currentTime);
+      
+      source.connect(gainNode);
+      gainNode.connect(audioContextRef.current.destination);
+      source.start();
     });
 
     return () => {
@@ -47,24 +52,33 @@ export default function WalkieTalkie() {
     };
   }, []);
 
+  const initAudio = async () => {
+    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+    sourceRef.current = audioContextRef.current.createMediaStreamSource(streamRef.current);
+    processorRef.current = audioContextRef.current.createScriptProcessor(1024, 1, 1);
+    gainNodeRef.current = audioContextRef.current.createGain();
+    compressorRef.current = audioContextRef.current.createDynamicsCompressor();
+
+    sourceRef.current.connect(gainNodeRef.current);
+    gainNodeRef.current.connect(compressorRef.current);
+    compressorRef.current.connect(processorRef.current);
+    processorRef.current.connect(audioContextRef.current.destination);
+
+    processorRef.current.onaudioprocess = (e) => {
+      const inputData = e.inputBuffer.getChannelData(0);
+      const outputData = new Float32Array(inputData.length);
+      for (let i = 0; i < inputData.length; i++) {
+        outputData[i] = Math.max(-1, Math.min(1, inputData[i])); // Clipping
+      }
+      socket.emit('audioChunk', outputData);
+    };
+  };
+
   const handleStartSpeaking = async () => {
     if (!currentSpeaker && username) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        audioStreamRef.current = stream;
-        audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
-        audioSourceRef.current = audioContext.current.createMediaStreamSource(stream);
-        processorRef.current = audioContext.current.createScriptProcessor(1024, 1, 1);
-
-        audioSourceRef.current.connect(processorRef.current);
-        processorRef.current.connect(audioContext.current.destination);
-
-        processorRef.current.onaudioprocess = (e) => {
-          const left = e.inputBuffer.getChannelData(0);
-          const uint8Array = new Uint8Array(left.buffer);
-          socket.emit('audioChunk', uint8Array);
-        };
-
+        await initAudio();
         setIsSpeaking(true);
         socket.emit('startSpeaking', username);
       } catch (error) {
@@ -74,14 +88,20 @@ export default function WalkieTalkie() {
   };
 
   const handleStopSpeaking = () => {
-    if (audioStreamRef.current) {
-      audioStreamRef.current.getTracks().forEach(track => track.stop());
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
     }
-    if (audioSourceRef.current) {
-      audioSourceRef.current.disconnect();
+    if (sourceRef.current) {
+      sourceRef.current.disconnect();
     }
     if (processorRef.current) {
       processorRef.current.disconnect();
+    }
+    if (gainNodeRef.current) {
+      gainNodeRef.current.disconnect();
+    }
+    if (compressorRef.current) {
+      compressorRef.current.disconnect();
     }
     setIsSpeaking(false);
     socket.emit('stopSpeaking', username);
