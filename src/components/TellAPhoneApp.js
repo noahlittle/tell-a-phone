@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
 import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
 import { Mic, MicOff, User, Volume2, ThumbsUp, ThumbsDown, Radio, Users, Clock } from 'lucide-react'
 
