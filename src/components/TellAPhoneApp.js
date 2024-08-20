@@ -18,7 +18,7 @@ const BUFFER_SIZE = 2048;
 const INITIAL_BROADCAST_TIME = 10; // Initial broadcast time in seconds
 
 export default function WalkieTalkie() {
-  const [step, setStep] = useState('info'); // 'info', 'username', or 'main'
+  const [step, setStep] = useState('info');
   const [username, setUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -33,6 +33,7 @@ export default function WalkieTalkie() {
   const [hasVoted, setHasVoted] = useState(false);
   const [upvotes, setUpvotes] = useState(0);
   const [downvotes, setDownvotes] = useState(0);
+  const [isConnected, setIsConnected] = useState(false);
   const audioContextRef = useRef(null);
   const streamRef = useRef(null);
   const sourceRef = useRef(null);
@@ -41,14 +42,16 @@ export default function WalkieTalkie() {
   const compressorRef = useRef(null);
 
   useEffect(() => {
+    socket.on('connect', () => setIsConnected(true));
+    socket.on('disconnect', () => setIsConnected(false));
     socket.on('userCount', (count) => setUserCount(count));
 
     return () => {
+      socket.off('connect');
+      socket.off('disconnect');
       socket.off('userCount');
     };
   }, []);
-
-  
 
   useEffect(() => {
     if (step !== 'main') return;
@@ -87,7 +90,6 @@ export default function WalkieTalkie() {
     const updateProgress = (timeLeft, totalTime) => {
       const newProgress = totalTime > 0 ? ((totalTime - timeLeft) / totalTime) * 100 : 0;
       setProgress(newProgress);
-      console.log(`Updated progress: ${newProgress.toFixed(2)}%, timeLeft: ${timeLeft}, totalTime: ${totalTime}`);
     };
   
     socket.on('speakerUpdate', handleSpeakerUpdate);
@@ -276,11 +278,16 @@ const handleVote = (voteType) => {
   );
 
   const renderMainStep = () => (
-    <Card className="w-96 bg-gray-800 text-white">
+    <Card className={`w-96 ${isSpeaking ? 'bg-red-800' : 'bg-gray-800'} text-white transition-colors duration-500`}>
       <CardHeader>
-        <div className="flex items-center space-x-2">
-          <Radio className="text-blue-500" />
-          <CardTitle className="text-2xl font-bold">Raydeeo</CardTitle>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Radio className="text-blue-500" />
+            <CardTitle className="text-2xl font-bold">Raydeeo</CardTitle>
+          </div>
+          <Badge variant={isConnected ? "success" : "destructive"}>
+            {isConnected ? "Connected" : "Connecting..."}
+          </Badge>
         </div>
         <CardDescription className="text-gray-400">Welcome, {username}!</CardDescription>
       </CardHeader>
@@ -291,8 +298,8 @@ const handleVote = (voteType) => {
             <span>{userCount} connected</span>
           </div>
           {currentSpeaker && (
-            <div className="text-sm font-medium">
-              {currentSpeaker === username ? 'You are live!' : `${currentSpeaker} is on the air`}
+            <div className={`text-sm font-medium ${isSpeaking ? 'animate-pulse text-red-300' : ''}`}>
+              {isSpeaking ? 'YOU ARE LIVE!' : `${currentSpeaker} is on the air`}
             </div>
           )}
         </div>
@@ -305,17 +312,19 @@ const handleVote = (voteType) => {
             </div>
           </div>
         )}
-        <div className="flex items-center justify-between">
-          <Button
-            className="flex-grow bg-blue-600 hover:bg-blue-700"
-            onClick={inQueue ? handleLeaveQueue : handleJoinQueue}
-          >
-            {inQueue ? 'Leave Queue' : 'Join Queue'}
-          </Button>
-          <Badge variant="secondary" className="ml-2 bg-gray-700">
-            {queueLength} in queue
-          </Badge>
-        </div>
+        {!isSpeaking && (
+          <div className="flex items-center justify-between">
+            <Button
+              className="flex-grow bg-blue-600 hover:bg-blue-700"
+              onClick={inQueue ? handleLeaveQueue : handleJoinQueue}
+            >
+              {inQueue ? 'Leave Queue' : 'Join Queue'}
+            </Button>
+            <Badge variant="secondary" className="ml-2 bg-gray-700">
+              {queueLength} in queue
+            </Badge>
+          </div>
+        )}
         {currentSpeaker && currentSpeaker !== username && (
           <div className="flex justify-center space-x-4">
             <Button onClick={() => handleVote('upvote')} disabled={hasVoted} className="bg-green-600 hover:bg-green-700">
