@@ -5,15 +5,21 @@ import { io } from 'socket.io-client';
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Mic, MicOff, User } from 'lucide-react'
+import { Slider } from "@/components/ui/slider"
+import { Mic, MicOff, User, Volume2 } from 'lucide-react'
 
 const socket = io('https://api.raydeeo.com:3001');
+
+// Audio settings
+const SAMPLE_RATE = 48000;
+const BUFFER_SIZE = 2048;
 
 export default function WalkieTalkie() {
   const [username, setUsername] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentSpeaker, setCurrentSpeaker] = useState(null);
   const [userCount, setUserCount] = useState(0);
+  const [volume, setVolume] = useState(1);
   const audioContextRef = useRef(null);
   const streamRef = useRef(null);
   const sourceRef = useRef(null);
@@ -27,18 +33,18 @@ export default function WalkieTalkie() {
     
     socket.on('audioChunk', (audioChunk) => {
       if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+        audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
       }
       
       const floatArray = new Float32Array(audioChunk);
-      const buffer = audioContextRef.current.createBuffer(1, floatArray.length, 48000);
+      const buffer = audioContextRef.current.createBuffer(1, floatArray.length, SAMPLE_RATE);
       buffer.getChannelData(0).set(floatArray);
       
       const source = audioContextRef.current.createBufferSource();
       source.buffer = buffer;
       
       const gainNode = audioContextRef.current.createGain();
-      gainNode.gain.setValueAtTime(1, audioContextRef.current.currentTime);
+      gainNode.gain.setValueAtTime(volume, audioContextRef.current.currentTime);
       
       source.connect(gainNode);
       gainNode.connect(audioContextRef.current.destination);
@@ -50,15 +56,29 @@ export default function WalkieTalkie() {
       socket.off('userCount');
       socket.off('audioChunk');
     };
-  }, []);
+  }, [volume]);
 
   const initAudio = async () => {
-    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
+    streamRef.current = await navigator.mediaDevices.getUserMedia({ 
+      audio: { 
+        sampleRate: SAMPLE_RATE,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: false
+      } 
+    });
     sourceRef.current = audioContextRef.current.createMediaStreamSource(streamRef.current);
-    processorRef.current = audioContextRef.current.createScriptProcessor(1024, 1, 1);
+    processorRef.current = audioContextRef.current.createScriptProcessor(BUFFER_SIZE, 1, 1);
     gainNodeRef.current = audioContextRef.current.createGain();
     compressorRef.current = audioContextRef.current.createDynamicsCompressor();
+
+    // Adjust compressor settings for better quality
+    compressorRef.current.threshold.setValueAtTime(-24, audioContextRef.current.currentTime);
+    compressorRef.current.knee.setValueAtTime(30, audioContextRef.current.currentTime);
+    compressorRef.current.ratio.setValueAtTime(12, audioContextRef.current.currentTime);
+    compressorRef.current.attack.setValueAtTime(0.003, audioContextRef.current.currentTime);
+    compressorRef.current.release.setValueAtTime(0.25, audioContextRef.current.currentTime);
 
     sourceRef.current.connect(gainNodeRef.current);
     gainNodeRef.current.connect(compressorRef.current);
@@ -145,6 +165,16 @@ export default function WalkieTalkie() {
               {isSpeaking ? <MicOff className="mr-2" /> : <Mic className="mr-2" />}
               {isSpeaking ? 'Release to Stop' : 'Hold to Speak'}
             </Button>
+            <div className="flex items-center space-x-2">
+              <Volume2 size={20} />
+              <Slider
+                value={[volume]}
+                onValueChange={(values) => setVolume(values[0])}
+                max={1}
+                step={0.01}
+                className="flex-grow"
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
