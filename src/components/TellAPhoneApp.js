@@ -58,6 +58,7 @@ export default function WalkieTalkie() {
       setUpvotes(upvotes);
       setDownvotes(downvotes);
       setHasVoted(false);
+      console.log(totalTime, timeLeft);
       setProgress(((totalTime - timeLeft) / totalTime) * 100);
       
       if (speaker === username) {
@@ -269,7 +270,7 @@ export default function WalkieTalkie() {
           </div>
           {currentSpeaker && (
             <div className="text-sm font-medium">
-              {currentSpeaker === username ? 'You are speaking' : `${currentSpeaker} is speaking`}
+              {currentSpeaker === username ? 'You are live!' : `${currentSpeaker} is on the air`}
             </div>
           )}
         </div>
