@@ -24,6 +24,7 @@ export default function WalkieTalkie() {
   const [currentSpeaker, setCurrentSpeaker] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0);
   const [totalTime, setTotalTime] = useState(INITIAL_BROADCAST_TIME);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const [userCount, setUserCount] = useState(0);
   const [volume, setVolume] = useState(1);
   const [queueLength, setQueueLength] = useState(0);
@@ -39,12 +40,21 @@ export default function WalkieTalkie() {
   const compressorRef = useRef(null);
 
   useEffect(() => {
+    socket.on('userCount', (count) => setUserCount(count));
+
+    return () => {
+      socket.off('userCount');
+    };
+  }, []);
+
+  useEffect(() => {
     if (step !== 'main') return;
 
     socket.on('speakerUpdate', ({ speaker, timeLeft, totalTime, upvotes, downvotes }) => {
       setCurrentSpeaker(speaker);
       setTimeLeft(timeLeft);
       setTotalTime(totalTime);
+      setElapsedTime(totalTime - timeLeft);
       setUpvotes(upvotes);
       setDownvotes(downvotes);
       setHasVoted(false);
@@ -55,12 +65,13 @@ export default function WalkieTalkie() {
         stopSpeaking();
       }
     });
-    socket.on('timeUpdate', ({ timeLeft, upvotes, downvotes }) => {
+    socket.on('timeUpdate', ({ timeLeft, totalTime, upvotes, downvotes }) => {
       setTimeLeft(timeLeft);
+      setTotalTime(totalTime);
+      setElapsedTime(totalTime - timeLeft);
       setUpvotes(upvotes);
       setDownvotes(downvotes);
     });
-    socket.on('userCount', (count) => setUserCount(count));
     socket.on('queueUpdate', (newQueue) => {
       setQueueLength(newQueue.length);
       setInQueue(newQueue.includes(username));
@@ -89,7 +100,6 @@ export default function WalkieTalkie() {
     return () => {
       socket.off('speakerUpdate');
       socket.off('timeUpdate');
-      socket.off('userCount');
       socket.off('queueUpdate');
       socket.off('audioChunk');
     };
@@ -185,7 +195,10 @@ export default function WalkieTalkie() {
   const renderInfoStep = () => (
     <Card className="w-96 bg-gray-800 text-white">
       <CardHeader>
-        <CardTitle className="text-2xl font-bold">Raydeeo</CardTitle>
+        <div className="flex items-center space-x-2">
+          <Radio className="text-blue-500" />
+          <CardTitle className="text-2xl font-bold">Raydeeo</CardTitle>
+        </div>
         <CardDescription className="text-gray-400">Walkie-talkie for the web</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -211,7 +224,10 @@ export default function WalkieTalkie() {
   const renderUsernameStep = () => (
     <Card className="w-96 bg-gray-800 text-white">
       <CardHeader>
-        <CardTitle className="text-2xl font-bold">Create Username</CardTitle>
+        <div className="flex items-center space-x-2">
+          <Radio className="text-blue-500" />
+          <CardTitle className="text-2xl font-bold">Raydeeo</CardTitle>
+        </div>
         <CardDescription className="text-gray-400">Choose a 2-10 character username</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -233,7 +249,10 @@ export default function WalkieTalkie() {
   const renderMainStep = () => (
     <Card className="w-96 bg-gray-800 text-white">
       <CardHeader>
-        <CardTitle className="text-2xl font-bold">Raydeeo</CardTitle>
+        <div className="flex items-center space-x-2">
+          <Radio className="text-blue-500" />
+          <CardTitle className="text-2xl font-bold">Raydeeo</CardTitle>
+        </div>
         <CardDescription className="text-gray-400">Welcome, {username}!</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -250,7 +269,7 @@ export default function WalkieTalkie() {
         </div>
         {currentSpeaker && (
           <div className="space-y-2">
-            <Progress value={((totalTime - timeLeft) / totalTime) * 100} className="w-full bg-gray-700" />
+            <Progress value={(elapsedTime / totalTime) * 100} className="w-full bg-gray-700" />
             <div className="flex justify-between text-sm">
               <span>{timeLeft}s left</span>
               <span>👍 {upvotes} | 👎 {downvotes}</span>
