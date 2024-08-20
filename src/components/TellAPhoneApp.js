@@ -2,12 +2,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { Button } from "@/components/ui/button"
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Mic, MicOff, User, Volume2, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { Mic, MicOff, User, Volume2, ThumbsUp, ThumbsDown, Radio, Users, Clock } from 'lucide-react'
 
 const socket = io('https://api.raydeeo.com:3001');
 
@@ -17,7 +17,9 @@ const BUFFER_SIZE = 2048;
 const INITIAL_BROADCAST_TIME = 10; // Initial broadcast time in seconds
 
 export default function WalkieTalkie() {
+  const [step, setStep] = useState('info'); // 'info', 'username', or 'main'
   const [username, setUsername] = useState('');
+  const [usernameError, setUsernameError] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentSpeaker, setCurrentSpeaker] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -37,6 +39,8 @@ export default function WalkieTalkie() {
   const compressorRef = useRef(null);
 
   useEffect(() => {
+    if (step !== 'main') return;
+
     socket.on('speakerUpdate', ({ speaker, timeLeft, totalTime, upvotes, downvotes }) => {
       setCurrentSpeaker(speaker);
       setTimeLeft(timeLeft);
@@ -89,7 +93,7 @@ export default function WalkieTalkie() {
       socket.off('queueUpdate');
       socket.off('audioChunk');
     };
-  }, [username, volume, isSpeaking]);
+  }, [username, volume, isSpeaking, step]);
 
   const initAudio = async () => {
     try {
@@ -169,79 +173,132 @@ export default function WalkieTalkie() {
     }
   };
 
-  return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <Card className="w-96">
-        <CardHeader>
-          <CardTitle>Walkie Talkie App</CardTitle>
-          <CardDescription>Connect and talk with others!</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <Input
-              type="text"
-              placeholder="Enter your username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full"
-            />
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <User size={20} />
-                <span>{userCount} connected</span>
-              </div>
-              {currentSpeaker && (
-                <div className="text-sm font-medium">
-                  {currentSpeaker === username ? 'You are speaking' : `${currentSpeaker} is speaking`}
-                </div>
-              )}
+  const handleUsernameSubmit = () => {
+    if (username.length >= 2 && username.length <= 10) {
+      setStep('main');
+      setUsernameError('');
+    } else {
+      setUsernameError('Username must be 2-10 characters long');
+    }
+  };
+
+  const renderInfoStep = () => (
+    <Card className="w-96 bg-gray-800 text-white">
+      <CardHeader>
+        <CardTitle className="text-2xl font-bold">Raydeeo</CardTitle>
+        <CardDescription className="text-gray-400">Walkie-talkie for the web</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center space-x-2">
+          <Radio className="text-blue-500" />
+          <span>Broadcast your voice to everyone</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Users className="text-green-500" />
+          <span>Join a queue to take turns speaking</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Clock className="text-yellow-500" />
+          <span>10 seconds to share your thoughts</span>
+        </div>
+      </CardContent>
+      <CardFooter>
+        <Button className="w-full" onClick={() => setStep('username')}>Get Started</Button>
+      </CardFooter>
+    </Card>
+  );
+
+  const renderUsernameStep = () => (
+    <Card className="w-96 bg-gray-800 text-white">
+      <CardHeader>
+        <CardTitle className="text-2xl font-bold">Create Username</CardTitle>
+        <CardDescription className="text-gray-400">Choose a 2-10 character username</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Input
+          type="text"
+          placeholder="Enter your username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          className="bg-gray-700 border-gray-600 text-white"
+        />
+        {usernameError && <p className="text-red-500 text-sm">{usernameError}</p>}
+      </CardContent>
+      <CardFooter>
+        <Button className="w-full" onClick={handleUsernameSubmit}>Start Listening</Button>
+      </CardFooter>
+    </Card>
+  );
+
+  const renderMainStep = () => (
+    <Card className="w-96 bg-gray-800 text-white">
+      <CardHeader>
+        <CardTitle className="text-2xl font-bold">Raydeeo</CardTitle>
+        <CardDescription className="text-gray-400">Welcome, {username}!</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <User size={20} className="text-blue-500" />
+            <span>{userCount} connected</span>
+          </div>
+          {currentSpeaker && (
+            <div className="text-sm font-medium">
+              {currentSpeaker === username ? 'You are speaking' : `${currentSpeaker} is speaking`}
             </div>
-            {currentSpeaker && (
-              <div className="space-y-2">
-                <Progress value={((totalTime - timeLeft) / totalTime) * 100} className="w-full" />
-                <div className="flex justify-between text-sm">
-                  <span>{timeLeft}s left</span>
-                  <span>👍 {upvotes} | 👎 {downvotes}</span>
-                </div>
-              </div>
-            )}
-            <div className="flex items-center justify-between">
-              <Button
-                className="flex-grow"
-                onClick={inQueue ? handleLeaveQueue : handleJoinQueue}
-                disabled={!username}
-              >
-                {inQueue ? 'Leave Queue' : 'Join Queue'}
-              </Button>
-              <Badge variant="secondary" className="ml-2">
-                {queueLength} in queue
-              </Badge>
-            </div>
-            {currentSpeaker && currentSpeaker !== username && (
-              <div className="flex justify-center space-x-4">
-                <Button onClick={() => handleVote('upvote')} disabled={hasVoted}>
-                  <ThumbsUp className="mr-2" />
-                  +1s
-                </Button>
-                <Button onClick={() => handleVote('downvote')} disabled={hasVoted}>
-                  <ThumbsDown className="mr-2" />
-                  -1s
-                </Button>
-              </div>
-            )}
-            <div className="flex items-center space-x-2">
-              <Volume2 size={20} />
-              <Slider
-                value={[volume]}
-                onValueChange={(values) => setVolume(values[0])}
-                max={1}
-                step={0.01}
-                className="flex-grow"
-              />
+          )}
+        </div>
+        {currentSpeaker && (
+          <div className="space-y-2">
+            <Progress value={((totalTime - timeLeft) / totalTime) * 100} className="w-full bg-gray-700" />
+            <div className="flex justify-between text-sm">
+              <span>{timeLeft}s left</span>
+              <span>👍 {upvotes} | 👎 {downvotes}</span>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        )}
+        <div className="flex items-center justify-between">
+          <Button
+            className="flex-grow bg-blue-600 hover:bg-blue-700"
+            onClick={inQueue ? handleLeaveQueue : handleJoinQueue}
+          >
+            {inQueue ? 'Leave Queue' : 'Join Queue'}
+          </Button>
+          <Badge variant="secondary" className="ml-2 bg-gray-700">
+            {queueLength} in queue
+          </Badge>
+        </div>
+        {currentSpeaker && currentSpeaker !== username && (
+          <div className="flex justify-center space-x-4">
+            <Button onClick={() => handleVote('upvote')} disabled={hasVoted} className="bg-green-600 hover:bg-green-700">
+              <ThumbsUp className="mr-2" />
+              +1s
+            </Button>
+            <Button onClick={() => handleVote('downvote')} disabled={hasVoted} className="bg-red-600 hover:bg-red-700">
+              <ThumbsDown className="mr-2" />
+              -1s
+            </Button>
+          </div>
+        )}
+        <div className="flex items-center space-x-2">
+          <Volume2 size={20} className="text-yellow-500" />
+          <Slider
+            value={[volume]}
+            onValueChange={(values) => setVolume(values[0])}
+            max={1}
+            step={0.01}
+            className="flex-grow"
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-900">
+      {step === 'info' && renderInfoStep()}
+      {step === 'username' && renderUsernameStep()}
+      {step === 'main' && renderMainStep()}
     </div>
   );
 }
