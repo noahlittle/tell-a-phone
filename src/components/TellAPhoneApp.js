@@ -50,6 +50,7 @@ export default function WalkieTalkie() {
 
   useEffect(() => {
     if (step !== 'main') return;
+    console.log(totalTime, timeLeft);
 
     const handleSpeakerUpdate = ({ speaker, timeLeft, totalTime, upvotes, downvotes }) => {
       setCurrentSpeaker(speaker);
@@ -58,7 +59,6 @@ export default function WalkieTalkie() {
       setUpvotes(upvotes);
       setDownvotes(downvotes);
       setHasVoted(false);
-      console.log(totalTime, timeLeft);
       setProgress(((totalTime - timeLeft) / totalTime) * 100);
       
       if (speaker === username) {
