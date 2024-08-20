@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
-import { Mic, MicOff, User, Volume2 } from 'lucide-react'
+import { Mic, MicOff, User, Volume2, ThumbsUp, ThumbsDown } from 'lucide-react'
 
 const socket = io('https://api.raydeeo.com:3001');
 
@@ -18,8 +18,12 @@ export default function WalkieTalkie() {
   const [username, setUsername] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentSpeaker, setCurrentSpeaker] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(0);
   const [userCount, setUserCount] = useState(0);
   const [volume, setVolume] = useState(1);
+  const [queue, setQueue] = useState([]);
+  const [inQueue, setInQueue] = useState(false);
+  const [hasVoted, setHasVoted] = useState(false);
   const audioContextRef = useRef(null);
   const streamRef = useRef(null);
   const sourceRef = useRef(null);
@@ -28,8 +32,22 @@ export default function WalkieTalkie() {
   const compressorRef = useRef(null);
 
   useEffect(() => {
-    socket.on('speakerUpdate', (speaker) => setCurrentSpeaker(speaker));
+    socket.on('speakerUpdate', ({ speaker, timeLeft }) => {
+      setCurrentSpeaker(speaker);
+      setTimeLeft(timeLeft);
+      setHasVoted(false);
+      if (speaker === username) {
+        setIsSpeaking(true);
+        initAudio();
+      } else if (isSpeaking) {
+        stopSpeaking();
+      }
+    });
     socket.on('userCount', (count) => setUserCount(count));
+    socket.on('queueUpdate', (newQueue) => {
+      setQueue(newQueue);
+      setInQueue(newQueue.includes(username));
+    });
     
     socket.on('audioChunk', (audioChunk) => {
       if (!audioContextRef.current) {
@@ -54,18 +72,19 @@ export default function WalkieTalkie() {
     return () => {
       socket.off('speakerUpdate');
       socket.off('userCount');
+      socket.off('queueUpdate');
       socket.off('audioChunk');
     };
-  }, [volume]);
+  }, [username, volume, isSpeaking]);
 
   const initAudio = async () => {
     audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
     streamRef.current = await navigator.mediaDevices.getUserMedia({ 
       audio: { 
         sampleRate: SAMPLE_RATE,
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: true
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: false
       } 
     });
     sourceRef.current = audioContextRef.current.createMediaStreamSource(streamRef.current);
@@ -73,7 +92,6 @@ export default function WalkieTalkie() {
     gainNodeRef.current = audioContextRef.current.createGain();
     compressorRef.current = audioContextRef.current.createDynamicsCompressor();
 
-    // Adjust compressor settings for better quality
     compressorRef.current.threshold.setValueAtTime(-24, audioContextRef.current.currentTime);
     compressorRef.current.knee.setValueAtTime(30, audioContextRef.current.currentTime);
     compressorRef.current.ratio.setValueAtTime(12, audioContextRef.current.currentTime);
@@ -95,19 +113,7 @@ export default function WalkieTalkie() {
     };
   };
 
-  const handleStartSpeaking = async () => {
-    if (!currentSpeaker && username) {
-      try {
-        await initAudio();
-        setIsSpeaking(true);
-        socket.emit('startSpeaking', username);
-      } catch (error) {
-        console.error('Error accessing microphone:', error);
-      }
-    }
-  };
-
-  const handleStopSpeaking = () => {
+  const stopSpeaking = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
@@ -124,7 +130,25 @@ export default function WalkieTalkie() {
       compressorRef.current.disconnect();
     }
     setIsSpeaking(false);
-    socket.emit('stopSpeaking', username);
+  };
+
+  const handleJoinQueue = () => {
+    if (username && !inQueue) {
+      socket.emit('joinQueue', username);
+    }
+  };
+
+  const handleLeaveQueue = () => {
+    if (username && inQueue) {
+      socket.emit('leaveQueue', username);
+    }
+  };
+
+  const handleVote = (voteType) => {
+    if (!hasVoted && currentSpeaker && currentSpeaker !== username) {
+      socket.emit('vote', { voteType });
+      setHasVoted(true);
+    }
   };
 
   return (
@@ -151,20 +175,37 @@ export default function WalkieTalkie() {
               {currentSpeaker && (
                 <div className="text-sm font-medium">
                   {currentSpeaker === username ? 'You are speaking' : `${currentSpeaker} is speaking`}
+                  <span className="ml-2">({timeLeft}s left)</span>
                 </div>
               )}
             </div>
             <Button
-              className="w-full h-20 text-lg"
-              onMouseDown={handleStartSpeaking}
-              onMouseUp={handleStopSpeaking}
-              onTouchStart={handleStartSpeaking}
-              onTouchEnd={handleStopSpeaking}
-              disabled={!username || (currentSpeaker && currentSpeaker !== username)}
+              className="w-full"
+              onClick={inQueue ? handleLeaveQueue : handleJoinQueue}
+              disabled={!username}
             >
-              {isSpeaking ? <MicOff className="mr-2" /> : <Mic className="mr-2" />}
-              {isSpeaking ? 'Release to Stop' : 'Hold to Speak'}
+              {inQueue ? 'Leave Queue' : 'Join Queue'}
             </Button>
+            {currentSpeaker && currentSpeaker !== username && (
+              <div className="flex justify-center space-x-4">
+                <Button onClick={() => handleVote('upvote')} disabled={hasVoted}>
+                  <ThumbsUp className="mr-2" />
+                  +1s
+                </Button>
+                <Button onClick={() => handleVote('downvote')} disabled={hasVoted}>
+                  <ThumbsDown className="mr-2" />
+                  -1s
+                </Button>
+              </div>
+            )}
+            <div>
+              <h3 className="font-medium mb-2">Queue:</h3>
+              <ul className="list-disc pl-5">
+                {queue.map((user, index) => (
+                  <li key={index} className={user === username ? 'font-bold' : ''}>{user}</li>
+                ))}
+              </ul>
+            </div>
             <div className="flex items-center space-x-2">
               <Volume2 size={20} />
               <Slider
