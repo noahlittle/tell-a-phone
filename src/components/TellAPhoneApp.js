@@ -63,9 +63,9 @@ export default function WalkieTalkie() {
     streamRef.current = await navigator.mediaDevices.getUserMedia({ 
       audio: { 
         sampleRate: SAMPLE_RATE,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: false
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: true
       } 
     });
     sourceRef.current = audioContextRef.current.createMediaStreamSource(streamRef.current);
