@@ -7,7 +7,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Input } from "@/components/ui/input"
 import { Mic, MicOff, User } from 'lucide-react'
 
-const socket = io('http://localhost:3001');
+const socket = io('https://api.raydeeo.com');
 
 export default function WalkieTalkie() {
   const [username, setUsername] = useState('');
