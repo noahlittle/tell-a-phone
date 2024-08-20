@@ -110,7 +110,7 @@ export default function WalkieTalkie() {
       socket.off('queueUpdate');
       socket.off('audioChunk');
     };
-  }, [username, volume, isSpeaking, step]);
+  }, [username, volume, isSpeaking, step, timeLeft]);
 
   const initAudio = async () => {
     try {
