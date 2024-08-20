@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import { Mic, MicOff, User, Volume2, ThumbsUp, ThumbsDown } from 'lucide-react'
 
 const socket = io('https://api.raydeeo.com:3001');
@@ -12,6 +14,7 @@ const socket = io('https://api.raydeeo.com:3001');
 // Audio settings
 const SAMPLE_RATE = 48000;
 const BUFFER_SIZE = 2048;
+const MAX_BROADCAST_TIME = 20; // Maximum possible broadcast time
 
 export default function WalkieTalkie() {
   const [username, setUsername] = useState('');
@@ -20,7 +23,7 @@ export default function WalkieTalkie() {
   const [timeLeft, setTimeLeft] = useState(0);
   const [userCount, setUserCount] = useState(0);
   const [volume, setVolume] = useState(1);
-  const [queue, setQueue] = useState([]);
+  const [queueLength, setQueueLength] = useState(0);
   const [inQueue, setInQueue] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
   const audioContextRef = useRef(null);
@@ -47,7 +50,7 @@ export default function WalkieTalkie() {
     });
     socket.on('userCount', (count) => setUserCount(count));
     socket.on('queueUpdate', (newQueue) => {
-      setQueue(newQueue);
+      setQueueLength(newQueue.length);
       setInQueue(newQueue.includes(username));
     });
     
@@ -182,17 +185,27 @@ export default function WalkieTalkie() {
               {currentSpeaker && (
                 <div className="text-sm font-medium">
                   {currentSpeaker === username ? 'You are speaking' : `${currentSpeaker} is speaking`}
-                  <span className="ml-2">({timeLeft}s left)</span>
                 </div>
               )}
             </div>
-            <Button
-              className="w-full"
-              onClick={inQueue ? handleLeaveQueue : handleJoinQueue}
-              disabled={!username}
-            >
-              {inQueue ? 'Leave Queue' : 'Join Queue'}
-            </Button>
+            {currentSpeaker && (
+              <div className="space-y-2">
+                <Progress value={(timeLeft / MAX_BROADCAST_TIME) * 100} className="w-full" />
+                <div className="text-center text-sm">{timeLeft}s left</div>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <Button
+                className="flex-grow"
+                onClick={inQueue ? handleLeaveQueue : handleJoinQueue}
+                disabled={!username}
+              >
+                {inQueue ? 'Leave Queue' : 'Join Queue'}
+              </Button>
+              <Badge variant="secondary" className="ml-2">
+                {queueLength} in queue
+              </Badge>
+            </div>
             {currentSpeaker && currentSpeaker !== username && (
               <div className="flex justify-center space-x-4">
                 <Button onClick={() => handleVote('upvote')} disabled={hasVoted}>
@@ -205,14 +218,6 @@ export default function WalkieTalkie() {
                 </Button>
               </div>
             )}
-            <div>
-              <h3 className="font-medium mb-2">Queue:</h3>
-              <ul className="list-disc pl-5">
-                {queue.map((user, index) => (
-                  <li key={index} className={user === username ? 'font-bold' : ''}>{user}</li>
-                ))}
-              </ul>
-            </div>
             <div className="flex items-center space-x-2">
               <Volume2 size={20} />
               <Slider
