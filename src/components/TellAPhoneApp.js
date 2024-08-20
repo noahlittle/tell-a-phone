@@ -14,18 +14,21 @@ const socket = io('https://api.raydeeo.com:3001');
 // Audio settings
 const SAMPLE_RATE = 48000;
 const BUFFER_SIZE = 2048;
-const MAX_BROADCAST_TIME = 20; // Maximum possible broadcast time
+const INITIAL_BROADCAST_TIME = 10; // Initial broadcast time in seconds
 
 export default function WalkieTalkie() {
   const [username, setUsername] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentSpeaker, setCurrentSpeaker] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0);
+  const [totalTime, setTotalTime] = useState(INITIAL_BROADCAST_TIME);
   const [userCount, setUserCount] = useState(0);
   const [volume, setVolume] = useState(1);
   const [queueLength, setQueueLength] = useState(0);
   const [inQueue, setInQueue] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
+  const [upvotes, setUpvotes] = useState(0);
+  const [downvotes, setDownvotes] = useState(0);
   const audioContextRef = useRef(null);
   const streamRef = useRef(null);
   const sourceRef = useRef(null);
@@ -34,9 +37,12 @@ export default function WalkieTalkie() {
   const compressorRef = useRef(null);
 
   useEffect(() => {
-    socket.on('speakerUpdate', ({ speaker, timeLeft }) => {
+    socket.on('speakerUpdate', ({ speaker, timeLeft, totalTime, upvotes, downvotes }) => {
       setCurrentSpeaker(speaker);
       setTimeLeft(timeLeft);
+      setTotalTime(totalTime);
+      setUpvotes(upvotes);
+      setDownvotes(downvotes);
       setHasVoted(false);
       if (speaker === username) {
         setIsSpeaking(true);
@@ -45,8 +51,10 @@ export default function WalkieTalkie() {
         stopSpeaking();
       }
     });
-    socket.on('timeUpdate', (newTimeLeft) => {
-      setTimeLeft(newTimeLeft);
+    socket.on('timeUpdate', ({ timeLeft, upvotes, downvotes }) => {
+      setTimeLeft(timeLeft);
+      setUpvotes(upvotes);
+      setDownvotes(downvotes);
     });
     socket.on('userCount', (count) => setUserCount(count));
     socket.on('queueUpdate', (newQueue) => {
@@ -190,8 +198,11 @@ export default function WalkieTalkie() {
             </div>
             {currentSpeaker && (
               <div className="space-y-2">
-                <Progress value={(timeLeft / MAX_BROADCAST_TIME) * 100} className="w-full" />
-                <div className="text-center text-sm">{timeLeft}s left</div>
+                <Progress value={((totalTime - timeLeft) / totalTime) * 100} className="w-full" />
+                <div className="flex justify-between text-sm">
+                  <span>{timeLeft}s left</span>
+                  <span>👍 {upvotes} | 👎 {downvotes}</span>
+                </div>
               </div>
             )}
             <div className="flex items-center justify-between">
