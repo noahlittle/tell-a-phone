@@ -40,6 +40,9 @@ export default function WalkieTalkie() {
   const processorRef = useRef(null);
   const gainNodeRef = useRef(null);
   const compressorRef = useRef(null);
+  const [queuePosition, setQueuePosition] = useState(0);
+  const [nextSpeakerCountdown, setNextSpeakerCountdown] = useState(0);
+  
 
   useEffect(() => {
     socket.on('connect', () => setIsConnected(true));
@@ -55,6 +58,19 @@ export default function WalkieTalkie() {
 
   useEffect(() => {
     if (step !== 'main') return;
+
+    socket.on('queueUpdate', (newQueue) => {
+      setQueueLength(newQueue.length);
+      const userPosition = newQueue.indexOf(username);
+      setQueuePosition(userPosition !== -1 ? userPosition + 1 : 0);
+      setInQueue(userPosition !== -1);
+
+      if (userPosition === 0 && currentSpeaker) {
+        setNextSpeakerCountdown(timeLeft);
+      } else {
+        setNextSpeakerCountdown(0);
+      }
+    });
   
     let localTotalTime = INITIAL_BROADCAST_TIME;
   
@@ -223,6 +239,26 @@ const handleVote = (voteType) => {
     }
   };
 
+  const getQueueButtonText = () => {
+    if (!inQueue && queueLength === 0) return "Go Live";
+    if (!inQueue) return "Join Queue";
+    if (queuePosition === 1) return `${nextSpeakerCountdown}s`;
+    return `${queuePosition}${getOrdinalSuffix(queuePosition)} in line`;
+  };
+
+  const getOrdinalSuffix = (n) => {
+    const s = ["th", "st", "nd", "rd"];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  };
+
+  const getQueueButtonClass = () => {
+    if (!inQueue) return "bg-blue-600 hover:bg-blue-700";
+    if (queuePosition === 1) return "bg-red-600 hover:bg-red-700 animate-pulse";
+    return "bg-blue-800 hover:bg-blue-900";
+  };
+
+
   const renderInfoStep = () => (
     <Card className="w-96 bg-gray-800 text-white">
       <CardHeader>
@@ -230,7 +266,7 @@ const handleVote = (voteType) => {
           <Radio className="text-blue-500" />
           <CardTitle className="text-2xl font-bold">Raydeeo</CardTitle>
         </div>
-        <CardDescription className="text-gray-400">Walkie-talkie for the web</CardDescription>
+        <CardDescription className="text-gray-400">The Crowdsourced Radio Station</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center space-x-2">
@@ -312,19 +348,6 @@ const handleVote = (voteType) => {
             </div>
           </div>
         )}
-        {!isSpeaking && (
-          <div className="flex items-center justify-between">
-            <Button
-              className="flex-grow bg-blue-600 hover:bg-blue-700"
-              onClick={inQueue ? handleLeaveQueue : handleJoinQueue}
-            >
-              {inQueue ? 'Leave Queue' : 'Join Queue'}
-            </Button>
-            <Badge variant="secondary" className="ml-2 bg-gray-700">
-              {queueLength} in queue
-            </Badge>
-          </div>
-        )}
         {currentSpeaker && currentSpeaker !== username && (
           <div className="flex justify-center space-x-4">
             <Button onClick={() => handleVote('upvote')} disabled={hasVoted} className="bg-green-600 hover:bg-green-700">
@@ -347,6 +370,20 @@ const handleVote = (voteType) => {
             className="flex-grow"
           />
         </div>
+        <Separator className="bg-gray-600" />
+        {!isSpeaking && (
+          <div className="space-y-2">
+            <Button
+              className={`w-full ${getQueueButtonClass()}`}
+              onClick={inQueue ? handleLeaveQueue : handleJoinQueue}
+            >
+              {getQueueButtonText()}
+            </Button>
+            <div className="text-center text-sm text-gray-400">
+              {queueLength} in queue
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
