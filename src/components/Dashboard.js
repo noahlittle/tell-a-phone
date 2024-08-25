@@ -652,13 +652,13 @@ const Dashboard = ({ onLogout }) => {
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col space-y-4">
-          <Button onClick={() => handleBuyCredits('prod_QjA00ZYxcOr33P')}>
+          <Button onClick={() => handleBuyCredits('prod_QjESD3WgWxLtlb')}>
             1 Credit - $99
           </Button>
-          <Button onClick={() => handleBuyCredits('prod_QjA0vEi2AKADJs')}>
+          <Button onClick={() => handleBuyCredits('prod_QjET2GV4Ok1jFL')}>
             3 Credits - $249
           </Button>
-          <Button onClick={() => handleBuyCredits('prod_QjA1vNiXkCW7jz')}>
+          <Button onClick={() => handleBuyCredits('prod_QjETFhXJzcxEiW')}>
             5 Credits - $349
           </Button>
         </div>
