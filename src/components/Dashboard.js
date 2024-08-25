@@ -409,7 +409,7 @@ const StatusBar = ({ status }) => {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-gray-500 mb-4">
-                This information will be the default for your press releases. Make sure it's accurate - this is what journalists will use to contact you.
+                This information will be the default for your press releases. Make sure it&apos;s accurate - this is what journalists will use to contact you.
             </p>
             <form onSubmit={handleSubmit}>
               <div className="space-y-4">
@@ -1641,7 +1641,7 @@ const Dashboard = ({ onLogout }) => {
               <DialogHeader>
                 <DialogTitle>Insufficient Credits</DialogTitle>
                 <DialogDescription>
-                  You don't have any credits to create a new press release. Buy credits to create, edit, and distribute your press releases to over 500 new sites.
+                  You don&apos;t have any credits to create a new press release. Buy credits to create, edit, and distribute your press releases to over 500 new sites.
                 </DialogDescription>
               </DialogHeader>
               <div className="flex justify-end mt-4">

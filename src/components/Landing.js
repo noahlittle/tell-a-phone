@@ -234,7 +234,7 @@ const Landing = ({ onLogin }) => {
               </CardContent>
               <CardFooter className="justify-center">
                 <Button variant="ghost" onClick={() => setCurrentView('forgot')}>Forgot password?</Button>
-                <Button variant="ghost" onClick={() => setCurrentView('register')}>Don't have an account?</Button> 
+                <Button variant="ghost" onClick={() => setCurrentView('register')}>Don&apos;t have an account?</Button> 
               </CardFooter>
             </Card>
           </div>
@@ -380,7 +380,7 @@ const Landing = ({ onLogin }) => {
             {/* Features Section */}
             <section className="py-20 bg-white">
               <div className="container mx-auto px-6 max-w-6xl">
-                <h2 className="font-serif text-4xl font-bold mb-24 text-center">Here's why <u>people like you</u> choose Raydeeo:</h2>
+                <h2 className="font-serif text-4xl font-bold mb-24 text-center">Here&apos;s why <u>people like you</u> choose Raydeeo:</h2>
                 <div className="grid md:grid-cols-4 gap-12 mt-10">
                   <div className="text-center">
                     <PenTool className="w-16 h-16 mx-auto mb-4 text-gray-700" />
@@ -457,7 +457,7 @@ const Landing = ({ onLogin }) => {
                 <div className="grid md:grid-cols-3 gap-8">
                   <Card className="bg-white shadow-lg hover:shadow-xl transition-shadow duration-300">
                     <CardHeader>
-                      <CardTitle className="text-2xl font-bold mb-2">"Raydeeo is a game-changer."</CardTitle>
+                      <CardTitle className="text-2xl font-bold mb-2">&quot;Raydeeo is a game-changer.&quot;</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-gray-600 mb-4">I was able to get my project in front of thousands of people in just a few days. The results were amazing!</p>
@@ -466,7 +466,7 @@ const Landing = ({ onLogin }) => {
                   </Card>
                   <Card className="bg-white shadow-lg hover:shadow-xl transition-shadow duration-300">
                     <CardHeader>
-                      <CardTitle className="text-2xl font-bold mb-2">"Incredibly easy to use."</CardTitle>
+                      <CardTitle className="text-2xl font-bold mb-2">&quot;Incredibly easy to use.&quot;</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-gray-600 mb-4">The process was smooth from start to finish. Our press release got picked up by major news outlets!</p>
@@ -475,7 +475,7 @@ const Landing = ({ onLogin }) => {
                   </Card>
                   <Card className="bg-white shadow-lg hover:shadow-xl transition-shadow duration-300">
                     <CardHeader>
-                      <CardTitle className="text-2xl font-bold mb-2">"Unbeatable value."</CardTitle>
+                      <CardTitle className="text-2xl font-bold mb-2">&quot;Unbeatable value.&quot;</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-gray-600 mb-4">For the price, the reach and quality of service Raydeeo provides is unmatched. Highly recommended!</p>
