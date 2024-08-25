@@ -1627,7 +1627,7 @@ const Dashboard = ({ onLogout }) => {
          <div className="flex flex-col h-full">
           <div className="p-4 flex flex-col items-center justify-center">
             <Radio className="h-8 w-8 text-gray-900 mb-2" />
-            <span className="font-serif text-3xl font-bold text-gray-900">Raydeeo</span>
+            <span className="text-3xl font-bold text-gray-900">Raydeeo</span>
           </div>
           <Dialog open={isWizardOpen} onOpenChange={setIsWizardOpen}>
             <DialogTrigger asChild>

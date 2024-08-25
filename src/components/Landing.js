@@ -332,7 +332,7 @@ const Landing = ({ onLogin }) => {
               <div className="container mx-auto px-6 py-3 flex justify-between items-center">
                 <div className="flex items-center">
                   <Radio className="h-8 w-8 text-gray-900 mr-2" />
-                  <span className="font-serif text-2xl font-bold text-gray-900">Raydeeo</span>
+                  <span className="text-2xl font-bold text-gray-900">Raydeeo</span>
                 </div>
                 <div className="flex items-center space-x-4">
                   <Button className="bg-gray-900 hover:bg-gray-800 text-white" onClick={() => setCurrentView('register')}>
