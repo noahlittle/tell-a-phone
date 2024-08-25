@@ -89,6 +89,7 @@ const Landing = ({ onLogin }) => {
     try {
       const response = await axios.post(URL + '/api/forgot-password', { email });
       setSuccessMessage(response.data.message);
+      setCurrentView('login');
     } catch (error) {
       setError(error.response?.data?.message || 'An error occurred while processing your request');
     }
