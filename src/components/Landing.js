@@ -134,6 +134,7 @@ const Landing = ({ onLogin }) => {
                 <CardTitle className="text-2xl font-bold text-center">Create Your Account</CardTitle>
               </CardHeader>
               <CardContent>
+              {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">{error}</div>}
                 <form onSubmit={handleRegister}>
                   <div className="mb-4">
                     <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">Name</label>
@@ -198,6 +199,7 @@ const Landing = ({ onLogin }) => {
                 <CardTitle className="text-2xl font-bold text-center">Login</CardTitle>
               </CardHeader>
               <CardContent>
+              {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">{error}</div>}
                 <form onSubmit={handleLogin}>
                   <div className="mb-4">
                     <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
@@ -511,7 +513,6 @@ const Landing = ({ onLogin }) => {
     <div className="bg-gray-100 text-gray-900 min-h-screen">
     {successMessage && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">{successMessage}</div>}
     {renderAuthForm()}
-    {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">{error}</div>}
       <style jsx global>{`
         @keyframes ticker {
           0% {
