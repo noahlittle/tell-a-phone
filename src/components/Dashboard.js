@@ -1640,7 +1640,7 @@ const Dashboard = ({ onLogout }) => {
             <>
               <DialogHeader>
                 <DialogTitle>
-                    <Coins className="mr-2 h-6 w-6" />
+                    <Coins className="mr-2 h-6 w-6 mb-6" />
                     Insufficient Credits
                     </DialogTitle>
                 <DialogDescription>
