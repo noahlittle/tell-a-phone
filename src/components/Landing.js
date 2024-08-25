@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Radio, Rocket, Mail, Lock, User, PenTool, Zap, Link, BadgeDollarSign, FileText, Newspaper, ArrowRight, Home, CheckCircle } from 'lucide-react';
+import { Radio, Rocket, Mail, Lock, User, PenTool, Zap, Link, BadgeDollarSign, FileText, Newspaper, ArrowRight, Home, CheckCircle, SearchCheck } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import axios from 'axios';
 import { useSearchParams } from 'next/navigation';
@@ -49,12 +49,12 @@ const Landing = ({ onLogin }) => {
   }, []);
 
   const newsWebsites = [
-    "MarketWatch", "Benzinga", "BarChart", "Business Insurance", "Chronicle Journal",
-    "Minyanville", "Starkville Daily News", "The Global Tribune",
-    "Big Spring Herald", "The Pilot News", "Newport Vermont Daily Express",
-    "AM News", "Punxsutawney Spirit", "Wapakoneta Daily News",
-    "Benton Courier", "The News Universe", "St. Marys Daily Press",
-    "Star Tribune", "WRAL", "Investor Place", "StreetInsider"
+    "MarketWatch", "The Globe and Mail", "Benzinga", "BarChart", "Business Insurance", "Chronicle Journal",
+    "Minyanville", "Starkville Daily News", "Benzinga", "The Global Tribune",
+    "Big Spring Herald", "BarChart", "The Pilot News", "The Globe and Mail", "Newport Vermont Daily Express",
+    "AM News", "Punxsutawney Spirit", "Benzinga", "Wapakoneta Daily News",
+    "Benton Courier", "The News Universe", "Benzinga","St. Marys Daily Press",
+    "Star Tribune", "BarChart", "WRAL", "Investor Place", "The Globe and Mail", "StreetInsider"
   ];
 
   const handleRegister = async (e) => {
@@ -357,7 +357,7 @@ const Landing = ({ onLogin }) => {
                   <div className="flex flex-wrap justify-center gap-4 mb-8">
                     <Badge variant="outline" className="text-lg py-1 px-3 bg-white">
                       <Newspaper className="w-5 h-5 mr-2" />
-                      500+ News Websites
+                      500+ Premium News Websites
                     </Badge>
                     <Badge variant="outline" className="text-lg py-1 px-3 bg-white">
                       <Link className="w-5 h-5 mr-2" />
@@ -367,6 +367,10 @@ const Landing = ({ onLogin }) => {
                       <CheckCircle className="w-5 h-5 mr-2" />
                       Journalist Interest
                     </Badge>
+                    <Badge variant="outline" className="text-lg py-1 px-3 bg-white">
+                    <SearchCheck className="w-5 h-5 mr-2" />
+                    Featured on Google News
+                  </Badge>
                   </div>
                   <Button size="lg" className="bg-gray-900 hover:bg-gray-800 text-white font-semibold text-lg px-8 py-6" onClick={() => setCurrentView('register')}>
                   <Rocket className="mr-2" /> Get Started for $99 
