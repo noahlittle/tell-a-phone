@@ -131,6 +131,7 @@ const Landing = ({ onLogin }) => {
             {renderHomeButton()}
             <Card className="w-full max-w-md mx-auto">
               <CardHeader>
+              <Radio className="h-8 w-8 text-gray-900 mx-auto" />
                 <CardTitle className="text-2xl font-bold text-center">Create Your Account</CardTitle>
               </CardHeader>
               <CardContent>
@@ -197,6 +198,7 @@ const Landing = ({ onLogin }) => {
             {renderHomeButton()}
             <Card className="w-full max-w-md">
               <CardHeader>
+                <Radio className="h-8 w-8 text-gray-900 mx-auto" />
                 <CardTitle className="text-2xl font-bold text-center">Login</CardTitle>
               </CardHeader>
               <CardContent>
