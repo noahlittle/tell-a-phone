@@ -345,7 +345,7 @@ const Landing = ({ onLogin }) => {
             {/* Hero Section */}
             <section className="py-20 relative">
               <div className="container mx-auto px-6 max-w-6xl">
-                <div className="text-center max-w-3xl mx-auto">
+                <div className="text-center max-w-4xl mx-auto">
                   <h1 className="font-serif text-5xl font-bold mb-6 leading-tight">
                     Catapult your <br/>
                     <span className={`text-gray-700 underline decoration-gray-400 inline-block transition-opacity duration-500 ${fade ? 'opacity-0' : 'opacity-100'}`}>
