@@ -23,8 +23,8 @@ const Landing = ({ onLogin }) => {
   const searchParams = useSearchParams();
   const resetToken = searchParams.get('token');
 
-  const URL = 'http://localhost:3001';
-  // const URL = 'https://api.raydeeo.com';
+//  const URL = 'http://localhost:3001';
+  const URL = 'https://api.raydeeo.com';
 
   useEffect(() => {
     if (resetToken) {

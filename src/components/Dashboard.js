@@ -31,8 +31,8 @@ import { SelectTrigger, SelectValue, SelectContent, SelectItem} from '@/componen
 import "react-datepicker/dist/react-datepicker.css";
 
 
-const URL = 'http://localhost:3001';
-// const URL = 'https://api.raydeeo.com';
+// const URL = 'http://localhost:3001';
+ const URL = 'https://api.raydeeo.com';
 
 
 const categories = [
