@@ -646,9 +646,12 @@ const Dashboard = ({ onLogout }) => {
     <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Buy Credits</DialogTitle>
+          <DialogTitle>
+            <Coins className="h-6 w-6 mr-2 mb-6" />
+            Buy Credits
+            </DialogTitle>
           <DialogDescription>
-            Choose a credit package to purchase:
+            Each press releases uses 1 credit to generate, review and distribute. Raydeeo offers discounts based on the number of credits you purchase.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col space-y-4">
