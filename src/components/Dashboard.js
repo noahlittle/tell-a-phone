@@ -1639,7 +1639,10 @@ const Dashboard = ({ onLogout }) => {
           {insufficientCredits ? (
             <>
               <DialogHeader>
-                <DialogTitle>Insufficient Credits</DialogTitle>
+                <DialogTitle>
+                    <Coins className="mr-2 h-6 w-6" />
+                    Insufficient Credits
+                    </DialogTitle>
                 <DialogDescription>
                   You don&apos;t have any credits to create a new press release. Buy credits to create, edit, and distribute your press releases to over 500 new sites.
                 </DialogDescription>
