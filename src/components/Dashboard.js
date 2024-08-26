@@ -123,7 +123,7 @@ const featuredSites = [
       <div className="text-center max-w-4xl mx-auto p-4">
         <Radio className="h-16 w-16 text-black m-auto" />
         <h2 className="text-2xl font-bold mb-4">Welcome to Raydeeo</h2>
-        <p className="mb-6">Choose how you'd like to create your press release:</p>
+        <p className="mb-6">Choose how you&apos;d like to create your press release:</p>
         
         <div className="grid md:grid-cols-2 gap-6">
           <div 
@@ -132,7 +132,7 @@ const featuredSites = [
           >
             <Users className="h-12 w-12 text-blue-500 mb-4" />
             <h3 className="font-bold mb-2">Help Me Write It</h3>
-            <p className="text-sm">We'll guide you through a series of questions to craft your press release.</p>
+            <p className="text-sm">We&apos;ll guide you through a series of questions to craft your press release.</p>
           </div>
   
           <div 

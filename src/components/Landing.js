@@ -443,7 +443,7 @@ const Landing = ({ onLogin }) => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-gray-600 mb-4">Raydeeo automatically reviews your release for quality and to ensure it meets guidelines. You can make changes yourself, or use the "Fix It For Me" feature to get it past review.</p>
+                      <p className="text-gray-600 mb-4">Raydeeo automatically reviews your release for quality and to ensure it meets guidelines. You can make changes yourself, or use the &quot;Fix It For Me&quot; feature to get it past review.</p>
                     </CardContent>
                   </Card>
 
@@ -472,7 +472,7 @@ const Landing = ({ onLogin }) => {
                       <CardTitle className="text-2xl font-bold mb-2">&quot;Raydeeo is a game-changer.&quot;</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-gray-600 mb-4">You just can't find this sort of distribution for the same price. Smooth process, would recommend.</p>
+                      <p className="text-gray-600 mb-4">You just can&quot;t find this sort of distribution for the same price. Smooth process, would recommend.</p>
                       <p className="text-gray-700 font-semibold">- Michael Reynolds</p>
                     </CardContent>
                   </Card>
