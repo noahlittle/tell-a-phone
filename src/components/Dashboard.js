@@ -4,12 +4,12 @@ import axios from 'axios';
 import DatePicker from 'react-datepicker';
 import ReactConfetti from 'react-confetti';
 import "react-datepicker/dist/react-datepicker.css";
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select } from "@/components/ui/select";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
-import { Radio, FileText, Menu, X, User, Newspaper, MessageSquare, LogOut, Plus, Eye, Settings as SettingsIcon, ArrowLeft, ExternalLink, FileX, Clock, Send, ArrowRight, Shield, CheckCircle, ChevronUp, AlertCircle, Quote, Briefcase, Tags, Image as ImageIcon, HelpCircle, Loader, Edit, Save, Upload, LayoutDashboardIcon, Calendar, Coins } from 'lucide-react';
+import { Radio, FileText, Menu, X, User, Newspaper, MessageSquare, LogOut, Globe, Plus, Eye, Settings as SettingsIcon, Users, PenTool, ArrowLeft, ExternalLink, FileX, Clock, Send, ArrowRight, Shield, CheckCircle, ChevronUp, AlertCircle, Quote, Briefcase, Tags, Image as ImageIcon, HelpCircle, Loader, Edit, Save, Upload, LayoutDashboardIcon, Calendar, Coins } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { SelectTrigger, SelectValue, SelectContent, SelectItem} from '@/components/ui/select';
@@ -49,6 +50,105 @@ const categories = [
   "Travel", "U.K", "U.S", "Website & Blog", "World"
 ];
 
+const featuredSites = [
+    { domain: 'theglobeandmail.com', name: 'The Globe and Mail', logo: URL + '/uploads/globe.png' },
+    { domain: 'benzinga.com', name: 'Benzinga', logo: URL + '/uploads/benzinga.png' },
+    { domain: 'barchart.com', name: 'Barchart', logo: URL + '/uploads/barchart.png' }
+  ];
+
+  
+  const MinimalProgressIndicator = ({ currentStep, completedSteps, isWritingOwn }) => {
+    const getSteps = () => {
+      if (isWritingOwn) {
+        return [
+          { value: "0", icon: PenTool },
+          { value: "1", icon: FileText },
+          { value: "2", icon: Briefcase },
+          { value: "3", icon: Tags },
+          { value: "4", icon: ImageIcon },
+          { value: "5", icon: Calendar },
+          { value: "6", icon: CheckCircle }
+        ];
+      } else {
+        return [
+          { value: "0", icon: AlertCircle },
+          { value: "1", icon: FileText },
+          { value: "2", icon: Quote },
+          { value: "3", icon: Briefcase },
+          { value: "4", icon: Tags },
+          { value: "5", icon: ImageIcon },
+          { value: "6", icon: Calendar },
+          { value: "7", icon: CheckCircle }
+        ];
+      }
+    };
+  
+    const steps = getSteps();
+  
+    return (
+      <div className="flex justify-between items-center w-full py-4 px-4">
+        {steps.map((step, index) => {
+          const StepIcon = step.icon;
+          const isCompleted = index <= completedSteps;
+          const isCurrent = index === parseInt(currentStep);
+          
+          return (
+            <div key={step.value} className="flex-1 flex items-center">
+              <div 
+                className={`relative flex items-center justify-center w-8 h-8 rounded-full 
+                  ${isCompleted ? 'bg-black' : 'bg-gray-200'}
+                  ${isCurrent ? 'ring-2 ring-black ring-offset-2' : ''}
+                `}
+              >
+                <StepIcon 
+                  className={`w-5 h-5 ${isCompleted ? 'text-white' : 'text-gray-500'}`} 
+                />
+              </div>
+              {index < steps.length - 1 && (
+                <div 
+                  className={`flex-1 h-0.5 mx-1
+                    ${index < completedSteps ? 'bg-black' : 'bg-gray-200'}`}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+  
+  
+  const InitialInfoScreen = ({ onStart, onSelectOwnWrite }) => {
+    return (
+      <div className="text-center max-w-4xl mx-auto p-4">
+        <Radio className="h-16 w-16 text-black m-auto" />
+        <h2 className="text-2xl font-bold mb-4">Welcome to Raydeeo</h2>
+        <p className="mb-6">Choose how you'd like to create your press release:</p>
+        
+        <div className="grid md:grid-cols-2 gap-6">
+          <div 
+            onClick={() => onStart()}
+            className="border p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer flex flex-col items-center"
+          >
+            <Users className="h-12 w-12 text-blue-500 mb-4" />
+            <h3 className="font-bold mb-2">Help Me Write It</h3>
+            <p className="text-sm">We'll guide you through a series of questions to craft your press release.</p>
+          </div>
+  
+          <div 
+            onClick={() => onSelectOwnWrite()}
+            className="border p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer flex flex-col items-center"
+          >
+            <PenTool className="h-12 w-12 text-green-500 mb-4" />
+            <h3 className="font-bold mb-2">Write My Own</h3>
+            <p className="text-sm">Write your own press release and submit it directly for distribution.</p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  
+  
 const AdminPanel = ({ user }) => {
     const [releases, setReleases] = useState([]);
     const [error, setError] = useState(null);
@@ -70,6 +170,7 @@ const AdminPanel = ({ user }) => {
         console.error('Error fetching releases:', err);
       }
     };
+    
   
     const handleStatusChange = async (releaseId, newStatus) => {
       try {
@@ -243,10 +344,20 @@ const SuccessDialog = ({ isOpen, onClose }) => {
         const parsedUrl = new URL(url);
         return parsedUrl.hostname;
       } catch (error) {
-        // If URL parsing fails, return a portion of the original string
         return url.split('/')[2] || url;
       }
     };
+  
+    const featuredResults = results.filter(url => 
+      featuredSites.some(site => url.includes(site.domain))
+    );
+  
+    const otherResults = results.filter(url => 
+      !featuredSites.some(site => url.includes(site.domain))
+    );
+  
+    const totalWebsites = results.length;
+    const googleNewsLink = results.find(url => url.includes('google.com'));
   
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -257,8 +368,58 @@ const SuccessDialog = ({ isOpen, onClose }) => {
               Your press release has been published on the following sites:
             </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="h-[300px] w-full pr-4">
-            {results.map((url, index) => (
+  
+          <div className="space-y-4">
+            <div className="bg-gray-100 p-4 rounded-lg flex items-center justify-center">
+              <Globe className="h-6 w-6 text-blue-500 mr-2" />
+              <span className="text-2xl font-bold">{totalWebsites}</span>
+              <span className="ml-2 text-gray-600">
+                Website{totalWebsites !== 1 ? 's' : ''} Published
+              </span>
+            </div>
+  
+            {googleNewsLink && (
+              <a 
+                href={googleNewsLink} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="bg-gray-100 p-4 rounded-lg flex items-center justify-between hover:bg-gray-200 transition-colors"
+              >
+                <div className="flex items-center">
+                  <img src="https://api.raydeeo.com/uploads/gnews.png" alt="Google News" className="h-6 w-6 mr-2" />
+                  <span className="text-lg font-semibold">Google News</span>
+                </div>
+                <ExternalLink className="h-5 w-5 text-blue-500" />
+              </a>
+            )}
+          </div>
+  
+          {featuredResults.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold mb-2">Premium Publications</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {featuredResults.map((url, index) => {
+                  const site = featuredSites.find(site => url.includes(site.domain));
+                  return (
+                    <a
+                      key={index}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex flex-col items-center p-4 border rounded-lg hover:shadow-md transition-shadow"
+                    >
+                      <img src={site.logo} alt={site.name} className="h-12 mb-2" />
+                      <span className="text-sm text-center text-blue-600 hover:underline">{site.name}</span>
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+  
+          <ScrollArea className="h-[300px] w-full pr-4 mt-6">
+            <h3 className="text-lg font-semibold mb-2">All Publications</h3>
+            {otherResults.map((url, index) => (
               <div key={index} className="flex items-center justify-between py-2 border-b last:border-b-0">
                 <span className="truncate mr-2 flex-grow">
                   <a
@@ -392,7 +553,7 @@ const StatusBar = ({ status }) => {
     };
   
     if (isLoading) {
-      return <div className="p-4">Loading settings...</div>;
+      return;
     }
   
     if (error) {
@@ -493,6 +654,43 @@ const StatusBar = ({ status }) => {
     );
   };
 
+  const renderWriteOwnStep = () => {
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle className="flex items-center">
+            <PenTool className="mr-2 h-5 w-5" />
+            Write Your Own Press Release
+          </DialogTitle>
+          <DialogDescription>
+            Write your press release title and content below.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="title">Title</Label>
+            <Input
+              id="title"
+              value={parsedTitle}
+              onChange={(e) => setParsedTitle(e.target.value)}
+              placeholder="Enter your press release title"
+            />
+          </div>
+          <div>
+            <Label htmlFor="content">Content</Label>
+            <Textarea
+              id="content"
+              value={parsedContent}
+              onChange={(e) => setParsedContent(e.target.value)}
+              placeholder="Write your press release content here"
+              rows={10}
+            />
+          </div>
+        </div>
+      </>
+    );
+  };
+
 const Dashboard = ({ onLogout }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [releases, setReleases] = useState([]);
@@ -538,6 +736,11 @@ const Dashboard = ({ onLogout }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showResultsDialog, setShowResultsDialog] = useState(false);
   const [selectedResults, setSelectedResults] = useState([]);
+  const [showInitialInfo, setShowInitialInfo] = useState(true);
+  const [completedSteps, setCompletedSteps] = useState(-1);
+  const [isWritingOwn, setIsWritingOwn] = useState(false);
+  const [ownTitle, setOwnTitle] = useState('');
+const [ownContent, setOwnContent] = useState('');
 
   const sidebarRef = useRef(null);
   const mainContentRef = useRef(null);
@@ -545,26 +748,34 @@ const Dashboard = ({ onLogout }) => {
   const isStepComplete = () => {
     switch (wizardStep) {
       case 0:
-        return releaseData.about.trim() !== '';
+        return isWritingOwn ? ownTitle.trim() !== '' : releaseData.about.trim() !== '';
       case 1:
-        return releaseData.background.trim() !== '';
+        return isWritingOwn ? ownContent.trim() !== '' : releaseData.background.trim() !== '';
       case 2:
-        return releaseData.quote.trim() !== '';
-      case 3:
-        return (
+        return isWritingOwn ? (
           releaseData.companyName.trim() !== '' &&
           releaseData.contactName.trim() !== '' &&
           releaseData.contactTitle.trim() !== '' &&
           releaseData.contactEmail.trim() !== '' &&
           releaseData.contactUrl.trim() !== '' &&
           validateUrl(releaseData.contactUrl)
-        );
+        ) : releaseData.quote.trim() !== '';
+      case 3:
+        return isWritingOwn ? 
+          (releaseData.categories.length > 0 && releaseData.categories.length <= 3) : 
+          (releaseData.companyName.trim() !== '' && releaseData.contactName.trim() !== '' && 
+           releaseData.contactTitle.trim() !== '' && releaseData.contactEmail.trim() !== '' && 
+           releaseData.contactUrl.trim() !== '' && validateUrl(releaseData.contactUrl));
       case 4:
-        return releaseData.categories.length > 0 && releaseData.categories.length <= 3;
+        return isWritingOwn ? releaseData.image !== null : 
+          (releaseData.categories.length > 0 && releaseData.categories.length <= 3);
       case 5:
-        return releaseData.image !== null;
+        return isWritingOwn ? 
+          (publishOption === 'asap' || (publishOption === 'scheduled' && scheduledDate > new Date())) : 
+          releaseData.image !== null;
       case 6:
-        return publishOption === 'asap' || (publishOption === 'scheduled' && scheduledDate > new Date());
+        return isWritingOwn ? true : 
+          (publishOption === 'asap' || (publishOption === 'scheduled' && scheduledDate > new Date()));
       default:
         return true;
     }
@@ -582,6 +793,12 @@ const Dashboard = ({ onLogout }) => {
     setShowResultsDialog(true);
   };
 
+  const handleStartWizard = () => {
+    setShowInitialInfo(false);
+    setWizardStep(0);
+    setCompletedSteps(0);
+  };
+
   const fetchReleases = async () => {
     setIsLoading(true);
     try {
@@ -595,6 +812,10 @@ const Dashboard = ({ onLogout }) => {
       console.error('Error fetching releases:', err);
     }
     setIsLoading(false);
+  };
+
+  const handleStepChange = (step) => {
+    setWizardStep(parseInt(step));
   };
 
   const checkPaymentStatus = async () => {
@@ -727,10 +948,19 @@ const Dashboard = ({ onLogout }) => {
         contactUrl: contactInfo?.contactUrl || ''
       }));
       setInsufficientCredits(false);
+      setShowInitialInfo(true);
+      setIsWritingOwn(false);
     } else {
       setInsufficientCredits(true);
     }
     setIsWizardOpen(true);
+  };
+  
+  const handleSelectOwnWrite = () => {
+    setIsWritingOwn(true);
+    setShowInitialInfo(false);
+    setWizardStep(0);
+    setCompletedSteps(0);
   };
   
 
@@ -865,7 +1095,7 @@ const Dashboard = ({ onLogout }) => {
                         <CardTitle className="text-lg">{release.title}</CardTitle>
                       </div>
                       <p className="text-sm text-gray-500 mb-2">
-                        Created: {new Date(release.createdAt).toLocaleDateString()}
+                        {new Date(release.createdAt).toLocaleDateString()}
                       </p>
                       <Button variant="outline" className="w-full" onClick={() => handleViewDetails(release)}>
                         View Details
@@ -990,15 +1220,14 @@ const Dashboard = ({ onLogout }) => {
     setIsReviewing(true);
     try {
       const response = await axios.post(URL + '/review-release', {
-        title: parsedTitle,
-        content: parsedContent
+        title: isWritingOwn ? ownTitle : parsedTitle,
+        content: isWritingOwn ? ownContent : parsedContent
       }, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       setReviewFeedback(response.data);
       if (response.data.passed) {
         await handleSaveRelease();
-        // Update user data to reflect new credit balance
         await fetchUserData();
         await fetchReleases();
       }
@@ -1025,23 +1254,23 @@ const Dashboard = ({ onLogout }) => {
           formData.append(key, releaseData[key]);
         }
       });
-
+  
       formData.append('publishOption', publishOption);
       if (publishOption === 'scheduled') {
         formData.append('scheduledDate', scheduledDate.toISOString());
       }
-
+  
       if (followUpAnswer) {
         formData.append('followUpAnswer', followUpAnswer);
       }
-
+  
       const response = await axios.post(URL + '/generate-release', formData, {
         headers: { 
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'multipart/form-data'
         }
       });
-
+  
       if (response.data.generatedRelease.startsWith('#####ERROR#####')) {
         const errorMessage = response.data.generatedRelease.replace('#####ERROR#####', '').trim();
         setFollowUpQuestion(errorMessage);
@@ -1051,7 +1280,7 @@ const Dashboard = ({ onLogout }) => {
         setParsedTitle(title);
         setParsedContent(content);
         setReleaseData(prev => ({ ...prev, generatedRelease: response.data.generatedRelease }));
-        setWizardStep(7); // Move to the final step to display the generated release
+        setWizardStep(7); // Move to the review step
         setFollowUpQuestion('');
         setFollowUpAnswer('');
       }
@@ -1063,16 +1292,22 @@ const Dashboard = ({ onLogout }) => {
     }
   };
 
+
   const handleEdit = () => {
     setIsEditing(true);
   };
-
+  
   const handleSaveEdit = () => {
     setIsEditing(false);
-    setReleaseData(prev => ({ 
-      ...prev, 
-      generatedRelease: `${parsedTitle}\n###\n${parsedContent}` 
-    }));
+    if (isWritingOwn) {
+      setOwnTitle(ownTitle);
+      setOwnContent(ownContent);
+    } else {
+      setReleaseData(prev => ({ 
+        ...prev, 
+        generatedRelease: `${parsedTitle}\n###\n${parsedContent}` 
+      }));
+    }
   };
 
   const validateUrl = (url) => {
@@ -1119,12 +1354,61 @@ const Dashboard = ({ onLogout }) => {
     </Card>
   );
 
+  const renderContactInfo = () => {
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle className="flex items-center">
+            <Briefcase className="mr-2 h-5 w-5" />
+            Contact Information
+          </DialogTitle>
+          <DialogDescription>
+            Provide details about your company and contact person. This information will be included in your press release.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <Input
+            placeholder="Company or Project Name"
+            value={releaseData.companyName}
+            onChange={(e) => handleInputChange('companyName', e.target.value)}
+          />
+          <Input
+            placeholder="Contact Name"
+            value={releaseData.contactName}
+            onChange={(e) => handleInputChange('contactName', e.target.value)}
+          />
+          <Input
+            placeholder="Contact Title"
+            value={releaseData.contactTitle}
+            onChange={(e) => handleInputChange('contactTitle', e.target.value)}
+          />
+          <Input
+            placeholder="Contact Email"
+            type="email"
+            value={releaseData.contactEmail}
+            onChange={(e) => handleInputChange('contactEmail', e.target.value)}
+          />
+          <Input
+            placeholder="URL (e.g., https://www.example.com)"
+            type="text"
+            value={releaseData.contactUrl}
+            onChange={(e) => handleInputChange('contactUrl', e.target.value)}
+          />
+          {releaseData.contactUrl && !validateUrl(releaseData.contactUrl) && (
+            <p className="text-red-500 text-sm">Please enter a valid URL</p>
+          )}
+        </div>
+      </>
+    );
+  };
+  
+
   const handleSaveRelease = async () => {
     setIsSaving(true);
     try {
       const formData = new FormData();
-      formData.append('title', parsedTitle);
-      formData.append('content', parsedContent);
+      formData.append('title', isWritingOwn ? ownTitle : parsedTitle);
+      formData.append('content', isWritingOwn ? ownContent : parsedContent);
       formData.append('companyName', releaseData.companyName);
       formData.append('contactName', releaseData.contactName);
       formData.append('contactTitle', releaseData.contactTitle);
@@ -1135,11 +1419,11 @@ const Dashboard = ({ onLogout }) => {
       if (publishOption === 'scheduled') {
         formData.append('scheduledDate', scheduledDate.toISOString());
       }
-      
+  
       if (releaseData.image) {
         formData.append('image', releaseData.image);
       }
-
+  
       console.log('Saving release with data:', Object.fromEntries(formData));
       const response = await axios.post(URL + '/releases', formData, {
         headers: { 
@@ -1149,8 +1433,21 @@ const Dashboard = ({ onLogout }) => {
       });
       console.log('Save response:', response.data);
       setReleases([response.data, ...releases]);
+      
+      // Reset all states
       setIsWizardOpen(false);
       setWizardStep(0);
+      setCompletedSteps(-1);
+      setIsWritingOwn(false);
+      setOwnTitle('');
+      setOwnContent('');
+      setParsedTitle('');
+      setParsedContent('');
+      setReviewFeedback(null);
+      setFollowUpQuestion('');
+      setFollowUpAnswer('');
+      setPublishOption('asap');
+      setScheduledDate(new Date());
       setReleaseData({
         about: '',
         background: '',
@@ -1164,38 +1461,22 @@ const Dashboard = ({ onLogout }) => {
         image: null,
         generatedRelease: ''
       });
-      setParsedTitle('');
-      setParsedContent('');
-      setReviewFeedback(null);
-      
-      // Update user data to reflect new credit balance
+      setIsEditing(false);
+      setError(null);
+  
       await fetchUserData();
-
-      // Trigger confetti and success dialog
+  
       setShowConfetti(true);
       setShowSuccessDialog(true);
-
-      // Stop confetti after 5 seconds
+  
       setTimeout(() => setShowConfetti(false), 5000);
-
+  
     } catch (err) {
       console.error('Error saving release:', err.response ? err.response.data : err.message);
       setError(`Failed to save release: ${err.response ? err.response.data.error : err.message}`);
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const renderPaymentStatus = () => {
-    if (!paymentStatus) return null;
-
-    return (
-      <Alert variant={paymentStatus.type === 'success' ? 'default' : 'destructive'}>
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>{paymentStatus.type === 'success' ? 'Success' : 'Error'}</AlertTitle>
-        <AlertDescription>{paymentStatus.message}</AlertDescription>
-      </Alert>
-    );
   };
 
   const renderParsedContent = (content) => {
@@ -1245,16 +1526,21 @@ const Dashboard = ({ onLogout }) => {
     setIsFixing(true);
     try {
       const response = await axios.post(URL + '/fix-release', {
-        title: parsedTitle,
-        content: parsedContent,
+        title: isWritingOwn ? ownTitle : parsedTitle,
+        content: isWritingOwn ? ownContent : parsedContent,
         feedback: reviewFeedback.reasons
       }, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       
-      setParsedTitle(response.data.title);
-      setParsedContent(response.data.content);
-      setReviewFeedback(null); // Clear previous feedback
+      if (isWritingOwn) {
+        setOwnTitle(response.data.title);
+        setOwnContent(response.data.content);
+      } else {
+        setParsedTitle(response.data.title);
+        setParsedContent(response.data.content);
+      }
+      setReviewFeedback(null);
     } catch (error) {
       setError('Failed to fix release. Please try again.');
       console.error('Error fixing release:', error);
@@ -1339,7 +1625,24 @@ const Dashboard = ({ onLogout }) => {
   const renderWizardStep = () => {
     switch (wizardStep) {
       case 0:
-        return (
+        return isWritingOwn ? (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <PenTool className="mr-2 h-5 w-5" />
+                Enter Your Press Release Title
+              </DialogTitle>
+              <DialogDescription>
+                Provide a concise and informative title for your press release.
+              </DialogDescription>
+            </DialogHeader>
+            <Input
+              value={ownTitle}
+              onChange={(e) => setOwnTitle(e.target.value)}
+              placeholder="Enter your press release title"
+            />
+          </>
+        ) : (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center">
@@ -1358,7 +1661,25 @@ const Dashboard = ({ onLogout }) => {
           </>
         );
       case 1:
-        return (
+        return isWritingOwn ? (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <FileText className="mr-2 h-5 w-5" />
+                Enter Your Press Release Content
+              </DialogTitle>
+              <DialogDescription>
+                Paste or write your press release content below. HTML formatting is supported for links.
+              </DialogDescription>
+            </DialogHeader>
+            <Textarea
+              value={ownContent}
+              onChange={(e) => setOwnContent(e.target.value)}
+              placeholder="Paste or write your press release content here..."
+              rows={15}
+            />
+          </>
+        ) : (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center">
@@ -1377,7 +1698,7 @@ const Dashboard = ({ onLogout }) => {
           </>
         );
       case 2:
-        return (
+        return isWritingOwn ? renderContactInfo() : (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center">
@@ -1396,53 +1717,52 @@ const Dashboard = ({ onLogout }) => {
           </>
         );
       case 3:
-        return (
-                    <>
-          <DialogHeader>
-            <DialogTitle className="flex items-center">
-              <Briefcase className="mr-2 h-5 w-5" />
-              Contact Information
-            </DialogTitle>
-            <DialogDescription>
-              Provide details about your company and contact person. This information will be included in your press release.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Input
-              placeholder="Company or Project Name"
-              value={releaseData.companyName || (contactInfo && contactInfo.companyName) || ''}
-              onChange={(e) => handleInputChange('companyName', e.target.value)}
-            />
-            <Input
-              placeholder="Contact Name"
-              value={releaseData.contactName || (contactInfo && contactInfo.contactName) || ''}
-              onChange={(e) => handleInputChange('contactName', e.target.value)}
-            />
-            <Input
-              placeholder="Contact Title"
-              value={releaseData.contactTitle || (contactInfo && contactInfo.contactTitle) || ''}
-              onChange={(e) => handleInputChange('contactTitle', e.target.value)}
-            />
-            <Input
-              placeholder="Contact Email"
-              type="email"
-              value={releaseData.contactEmail || (contactInfo && contactInfo.contactEmail) || ''}
-              onChange={(e) => handleInputChange('contactEmail', e.target.value)}
-            />
-            <Input
-              placeholder="URL (e.g., https://www.example.com)"
-              type="text"
-              value={releaseData.contactUrl || (contactInfo && contactInfo.contactUrl) || ''}
-              onChange={(e) => handleInputChange('contactUrl', e.target.value)}
-            />
-            {releaseData.contactUrl && !validateUrl(releaseData.contactUrl) && (
-              <p className="text-red-500 text-sm">Please enter a valid URL</p>
-            )}
-          </div>
+        return isWritingOwn ? (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <Tags className="mr-2 h-5 w-5" />
+                Select Categories
+              </DialogTitle>
+              <DialogDescription>
+                Choose 1-3 categories that best describe your press release.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="h-[300px] overflow-y-auto space-y-2">
+              {categories.map((category) => (
+                <div key={category} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={category}
+                    checked={releaseData.categories.includes(category)}
+                    onCheckedChange={() => handleCategoryChange(category)}
+                    disabled={releaseData.categories.length >= 3 && !releaseData.categories.includes(category)}
+                  />
+                  <Label htmlFor={category}>{category}</Label>
+                </div>
+              ))}
+            </div>
           </>
-        );
+        ) : renderContactInfo();
       case 4:
-        return (
+        return isWritingOwn ? (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <ImageIcon className="mr-2 h-5 w-5" />
+                Upload Image
+              </DialogTitle>
+              <DialogDescription>
+                Upload an image for your press release (minimum 400x300 pixels). This is necessary to be listed on Google News.
+              </DialogDescription>
+            </DialogHeader>
+            <Input
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+            />
+            {releaseData.image && <p className="text-green-500">Image uploaded successfully.</p>}
+          </>
+        ) : (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center">
@@ -1469,7 +1789,7 @@ const Dashboard = ({ onLogout }) => {
           </>
         );
       case 5:
-        return (
+        return isWritingOwn ? renderPublishOptions() : (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center">
@@ -1488,45 +1808,48 @@ const Dashboard = ({ onLogout }) => {
             {releaseData.image && <p className="text-green-500">Image uploaded successfully.</p>}
           </>
         );
-      case 6:
-        return renderPublishOptions();
-        case 7:
-            return (
+        case 6:
+            return isWritingOwn ? (
               <>
                 <DialogHeader>
                   <DialogTitle className="flex items-center">
                     <FileText className="mr-2 h-5 w-5" />
-                    Generated Press Release
+                    Review Your Press Release
                   </DialogTitle>
                   <DialogDescription>
-                    Review your generated press release and make any necessary edits.
+                    Review your press release and make any necessary edits.
                   </DialogDescription>
                 </DialogHeader>
-                {isEditing ? (
-                  <>
-                    <Input
-                      value={parsedTitle}
-                      onChange={(e) => setParsedTitle(e.target.value)}
-                      className="font-bold text-lg mb-2"
-                    />
-                    <Textarea
-                      value={parsedContent}
-                      onChange={(e) => setParsedContent(e.target.value)}
-                      rows={10}
-                    />
-                    <Button onClick={handleSaveEdit} className="mt-2">
-                      Save Changes
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <h3 className="font-bold text-lg mb-2">{parsedTitle}</h3>
-                    {renderFormattedContent(parsedContent)}
-                    <Button onClick={handleEdit} className="mt-2">
-                      <Edit className="mr-2 h-4 w-4" /> Edit
-                    </Button>
-                  </>
-                )}
+                <div className="mt-4 space-y-4">
+                  {isEditing ? (
+                    <>
+                      <Input
+                        value={ownTitle}
+                        onChange={(e) => setOwnTitle(e.target.value)}
+                        className="font-bold text-xl mb-2"
+                        placeholder="Enter your press release title"
+                      />
+                      <Textarea
+                        value={ownContent}
+                        onChange={(e) => setOwnContent(e.target.value)}
+                        rows={15}
+                        className="w-full p-2 border rounded"
+                        placeholder="Enter your press release content"
+                      />
+                      <Button onClick={handleSaveEdit} className="mt-2">
+                        Save Changes
+                      </Button>
+                    </>
+                  ) : (
+                    <div className="prose max-w-none">
+                      <h1 className="text-2xl font-bold mb-4">{ownTitle}</h1>
+                      {renderFormattedContent(ownContent)}
+                    </div>
+                  )}
+                  <Button onClick={handleEdit} className="mt-4">
+                    <Edit className="mr-2 h-4 w-4" /> Edit
+                  </Button>
+                </div>
                 {renderReviewFeedback()}
                 <div className="flex justify-between mt-4">
                   {reviewFeedback && !reviewFeedback.passed && (
@@ -1571,43 +1894,142 @@ const Dashboard = ({ onLogout }) => {
                   </Button>
                 </div>
               </>
-            );
-      case 8:
-        return (
-          <>
-            <DialogHeader>
-              <DialogTitle className="flex items-center">
-                <HelpCircle className="mr-2 h-5 w-5" />
-                Additional Information Needed
-              </DialogTitle>
-              <DialogDescription>
-                {followUpQuestion}
-
-              </DialogDescription>
-            </DialogHeader>
-            <Textarea
-              placeholder="Provide the requested information here..."
-              value={followUpAnswer}
-              onChange={(e) => setFollowUpAnswer(e.target.value)}
-              rows={5}
-            />
-            <p className="text-sm text-gray-500 mt-2">
-            If additional follow-up questions are required, add to your existing answer - do not delete what you have previously written.
-            </p>
-            {renderErrorMessage()}
-          </>
-        );
+            ) : renderPublishOptions();
+          
+            case 7:
+                return !isWritingOwn ? (
+                  <>
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center">
+                        <FileText className="mr-2 h-5 w-5" />
+                        Review Your Press Release
+                      </DialogTitle>
+                      <DialogDescription>
+                        Review your press release and make any necessary edits.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="mt-4 space-y-4">
+                      {isEditing ? (
+                        <>
+                          <Input
+                            value={parsedTitle}
+                            onChange={(e) => setParsedTitle(e.target.value)}
+                            className="font-bold text-xl mb-2"
+                            placeholder="Enter your press release title"
+                          />
+                          <Textarea
+                            value={parsedContent}
+                            onChange={(e) => setParsedContent(e.target.value)}
+                            rows={15}
+                            className="w-full p-2 border rounded"
+                            placeholder="Enter your press release content"
+                          />
+                          <Button onClick={handleSaveEdit} className="mt-2">
+                            Save Changes
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <div className="prose max-w-none">
+                            <h1 className="text-2xl font-bold mb-4">{parsedTitle}</h1>
+                            {renderFormattedContent(parsedContent)}
+                          </div>
+                          <div className="flex justify-between items-center mt-4">
+                            <Button onClick={handleEdit}>
+                              <Edit className="mr-2 h-4 w-4" /> Edit
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    {renderReviewFeedback()}
+                    <div className="flex justify-between mt-4">
+                      {reviewFeedback && !reviewFeedback.passed && (
+                        <Button 
+                          onClick={handleFixRelease} 
+                          disabled={isFixing}
+                          variant="secondary"
+                        >
+                          {isFixing ? (
+                            <>
+                              <Loader className="mr-2 h-4 w-4 animate-spin" />
+                              Fixing...
+                            </>
+                          ) : (
+                            <>
+                              <HelpCircle className="mr-2 h-4 w-4" />
+                              Fix for me
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      <Button 
+                        onClick={handleSubmitForReview} 
+                        disabled={isReviewing || isSaving || isEditing}
+                      >
+                        {isReviewing ? (
+                          <>
+                            <Loader className="mr-2 h-4 w-4 animate-spin" />
+                            Reviewing...
+                          </>
+                        ) : isSaving ? (
+                          <>
+                            <Loader className="mr-2 h-4 w-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="mr-2 h-4 w-4" />
+                            {reviewFeedback && !reviewFeedback.passed ? 'Re-submit for Review' : 'Submit for Review'}
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                ) : null;
       default:
+        case 8:
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center">
+                    <HelpCircle className="mr-2 h-5 w-5" />
+                    Additional Information Needed
+                  </DialogTitle>
+                  <DialogDescription>
+                    Please provide the following additional information to generate your press release.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-500">{followUpQuestion}</p>
+                  <Textarea
+                    value={followUpAnswer}
+                    onChange={(e) => setFollowUpAnswer(e.target.value)}
+                    placeholder="Provide your answer here..."
+                    rows={5}
+                  />
+                </div>
+              </>
+            );
         return null;
     }
   };
 
   const handleNextStep = () => {
     if (isStepComplete()) {
-      if (wizardStep < 6) {
+      if (isWritingOwn && wizardStep < 6) {
         setWizardStep(wizardStep + 1);
-      } else if (wizardStep === 6) {
-        handleGenerateRelease();
+        setCompletedSteps(Math.max(completedSteps, wizardStep + 1));
+      } else if (!isWritingOwn && wizardStep < 7) {
+        setWizardStep(wizardStep + 1);
+        setCompletedSteps(Math.max(completedSteps, wizardStep + 1));
+      } else {
+        if (isWritingOwn) {
+          // Handle submission for write your own
+          handleSubmitForReview();
+        } else {
+          handleGenerateRelease();
+        }
       }
     } else {
       setError('Please fill in all required fields before proceeding.');
@@ -1647,7 +2069,7 @@ const Dashboard = ({ onLogout }) => {
                     Insufficient Credits
                     </DialogTitle>
                 <DialogDescription>
-                  You don&apos;t have any credits to create a new press release. Buy credits to create, edit, and distribute your press releases to over 500 new sites.
+                  You don&apos;t have any credits to create a new press release. Buy credits to create, edit, and distribute your press releases to over 400 new sites.
                 </DialogDescription>
               </DialogHeader>
               <div className="flex justify-end mt-4">
@@ -1662,52 +2084,69 @@ const Dashboard = ({ onLogout }) => {
                 </Button>
               </div>
             </>
+                   ) : showInitialInfo ? (
+                    <InitialInfoScreen onStart={handleStartWizard} onSelectOwnWrite={handleSelectOwnWrite} />
+                  ) : (
+                    <>
+                     <MinimalProgressIndicator currentStep={wizardStep.toString()} completedSteps={completedSteps} isWritingOwn={isWritingOwn} />
+                    {renderWizardStep()}
+                    <DialogFooter>
+  {wizardStep > 0 && (
+    <Button variant="outline" onClick={handlePreviousStep}>
+      <ArrowLeft className="mr-2 h-4 w-4" /> Back
+    </Button>
+  )}
+  {isWritingOwn ? (
+    // Buttons for when user is writing their own press release
+    wizardStep < 6 && (
+      <Button onClick={handleNextStep} disabled={!isStepComplete()}>
+        Next <ArrowRight className="ml-2 h-4 w-4" />
+      </Button>
+    )
+  ) : (
+    // Buttons for AI-generated press release
+    <>
+      {wizardStep < 6 && (
+        <Button onClick={handleNextStep} disabled={!isStepComplete()}>
+          Next <ArrowRight className="ml-2 h-4 w-4" />
+        </Button>
+      )}
+      {wizardStep === 6 && (
+        <Button onClick={handleGenerateRelease} disabled={isGenerating || !isStepComplete()}>
+          {isGenerating ? (
+            <>
+              <Loader className="mr-2 h-4 w-4 animate-spin" />
+              Generating...
+            </>
           ) : (
             <>
-              {renderWizardStep(contactInfo)}
-              <DialogFooter>
-                {wizardStep > 0 && wizardStep !== 8 && (
-                  <Button variant="outline" onClick={handlePreviousStep}>
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Back
-                  </Button>
-                )}
-{wizardStep < 7 && (
-  <Button onClick={handleNextStep} disabled={isGenerating || !isStepComplete()}>
-    {wizardStep === 6 ? (
-      <>
-        {isGenerating ? (
-          <Loader className="mr-2 h-4 w-4 animate-spin" />
-        ) : (
-          <ArrowRight className="mr-2 h-4 w-4" />
-        )}
-        {isGenerating ? 'Generating...' : 'Generate'}
-      </>
-    ) : (
-      <>
-        Next <ArrowRight className="ml-2 h-4 w-4" />
-      </>
-    )}
-  </Button>
-)}
-                {wizardStep === 8 && (
-                  <Button onClick={handleGenerateRelease} disabled={isGenerating}>
-                    {isGenerating ? (
-                      <>
-                        <Loader className="mr-2 h-4 w-4 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        Generate Again <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
-                )}
-              </DialogFooter>
+              <ArrowRight className="mr-2 h-4 w-4" />
+              Generate
             </>
           )}
-        </DialogContent>
-        </Dialog>
+        </Button>
+      )}
+      {wizardStep === 8 && (
+        <Button onClick={handleGenerateRelease} disabled={isGenerating || !followUpAnswer.trim()}>
+          {isGenerating ? (
+            <>
+              <Loader className="mr-2 h-4 w-4 animate-spin" />
+              Generating...
+            </>
+          ) : (
+            <>
+              Generate Again <ArrowRight className="ml-2 h-4 w-4" />
+            </>
+          )}
+        </Button>
+      )}
+    </>
+  )}
+</DialogFooter>
+                    </>
+                  )}
+                </DialogContent>
+              </Dialog>
           <nav className="mt-4 flex-grow">
             <Button 
               variant="ghost" 
