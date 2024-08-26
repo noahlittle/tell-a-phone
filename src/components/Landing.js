@@ -29,6 +29,7 @@ const Landing = ({ onLogin }) => {
   useEffect(() => {
     if (resetToken) {
       setCurrentView('reset');
+      window.history.replaceState({}, document.title, "/");
     }
   }, [resetToken]);
 
